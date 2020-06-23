@@ -1,0 +1,47 @@
+# An action which adds gripper/object pivoting capability to the OMPL MOveIt! planner
+
+#GOAL DEFINITION
+
+# STANDARD PLAN ##
+
+# The full starting configuration of the robot at the beginning of the trajectory
+float64[] start_config
+string[] start_config_joint_names
+
+# The name of the group that should be used to plan without pivoting
+string group_arm_name
+
+# The target pose
+geometry_msgs/PoseStamped target_pose
+# The end-effector id to be aligned to the target_pose
+string end_effector_frame_id
+
+# Optional constraints to be imposed on every point in the motion plan
+moveit_msgs/Constraints path_constraints
+
+# PIVOTING PLAN ##
+
+# Assumptions:
+# - Grasp point on the positive z-axis of object/cog_frame
+
+# Activate/Deativate gripper/object pivoting capability to the planner
+bool activate_pivoting
+
+# Pivoting make sense only if an object is attached, you have to pass the attached object id
+string attached_object_id
+
+# In order to use the pivoting, the collision object must have a cog_subframe
+# This subframe is centered in the object CoG, has the z-axis pointing "up" and x-axis pointing forward
+string cog_subframe
+
+# The name of the group that should be used to plan with pivoting
+string group_arm_pivoting_name
+
+---
+
+#RESULT DEFINITION
+trajectory_msgs/JointTrajectory[] planned_trajectories
+bool[] pivoting_mode
+
+---
+#FEEDBACK

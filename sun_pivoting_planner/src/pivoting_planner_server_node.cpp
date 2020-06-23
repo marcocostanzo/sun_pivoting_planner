@@ -426,6 +426,47 @@ cout << "5" << endl;
 
   }
 
+  void detachCollisionObject(const std::string& attached_object_id)
+  {
+	auto planning_scene_monitor = std::make_shared<planning_scene_monitor::PlanningSceneMonitor>("robot_description");
+	planning_scene_monitor->requestPlanningSceneState();
+	planning_scene_monitor::LockedPlanningSceneRO planning_scene(planning_scene_monitor);
+
+	moveit_msgs::AttachedCollisionObject attached_obj;
+	if(!planning_scene->getAttachedCollisionObjectMsg(attached_obj, attached_object_id))
+	{
+		ROS_ERROR("detachCollisionObject unable tu find attached object id");
+	}
+
+	moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
+
+	//Remove from attached
+	attached_obj.object.operation = moveit_msgs::AttachedCollisionObject::_object_type::REMOVE;
+	planning_scene_interface.applyAttachedCollisionObject(attached_obj);
+
+	planning_scene_monitor->requestPlanningSceneState();
+	moveit_msgs::CollisionObject collision_obj;
+	if(!planning_scene->getCollisionObjectMsg(collision_obj, attached_object_id))
+	{
+		ROS_ERROR("detachCollisionObject unable tu find attached object id");
+	}
+
+	moveit_msgs::CollisionObject new_obj = attached_obj.object;
+	new_obj.primitive_poses = collision_obj.primitive_poses;
+
+	for( const geometry_msgs::Pose& sub_pose : attached_obj.subframe_poses )
+	{
+		//TRANSFORM!!
+	}
+
+	// Change frame id!!
+
+	planning_scene_interface.applyCollisionObject(attached_obj.object);
+
+
+
+  }
+
   void changeObjectAttachState(
 	  moveit_msgs::AttachedCollisionObject obj_to_detach, 
 	  moveit_msgs::AttachedCollisionObject obj_to_attach
@@ -455,7 +496,7 @@ cout << "5" << endl;
 	print_collision_state();
 
 	cout << "changeObjectAttachState attach done [button]" << endl; cin >> ans;
-	
+
   }
 
   void executePlanning(const sun_pivoting_planner_msgs::PivotingPlanGoalConstPtr &goal)

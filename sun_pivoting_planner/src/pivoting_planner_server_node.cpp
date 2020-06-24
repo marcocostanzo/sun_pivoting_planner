@@ -21,6 +21,9 @@
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
+//#define DBG_BTN
+#undef DBG_BTN
+
 #include "sun_pivoting_planner/utility.h"
 #include "sun_pivoting_planner/exceptions.h"
 
@@ -188,22 +191,62 @@ public:
 
   }
 
-  void simulate_gravity_pivoting(
+  void simulate_gravity_pivoting_not_attached(
 	  const std::string& object_cog_frame_id,
 	  const std::string& pivoting_joint_name,
 	  double current_pivoting_angle,
-	  const std::string& robot_description_id
+	  const std::string& attached_object_id,
+	  const std::string& pivoting_link_name
+	  )
+	  {
+		  std::string link_was_attached =
+		detachCollisionObject(
+			planning_scene_monitor_,
+			attached_object_id, 
+			tf2_buffer_,
+			"robot_description"
+		);
+	attachCollisionObject(
+	  attached_object_id, 
+	  pivoting_link_name
+	);
+	simulate_gravity_pivoting(
+	  object_cog_frame_id,
+	  pivoting_joint_name,
+	  current_pivoting_angle
+	);
+	// ATTACH object to the standard link
+	detachCollisionObject(
+	  planning_scene_monitor_,
+	  attached_object_id, 
+	  tf2_buffer_,
+	  "robot_description"
+	);
+	attachCollisionObject(
+	  attached_object_id, 
+	  link_was_attached
+	);
+	  }
+
+  void simulate_gravity_pivoting(
+	  const std::string& object_cog_frame_id,
+	  const std::string& pivoting_joint_name,
+	  double current_pivoting_angle
 	  )
   {
 
 	  //DBG
+	  #ifdef DBG_BTN
 	  char ans;
 	 std::cout << "simulate_gravity_pivoting request planning state init [button]" << std::endl; std::cin >> ans;
+	 #endif
 
 	planning_scene_monitor_->requestPlanningSceneState();
 
 	//DBG
+	#ifdef DBG_BTN
 	std::cout << "simulate_gravity_pivoting request planning state done [button]" << std::endl; std::cin >> ans;
+	#endif
 
 	planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro_(planning_scene_monitor_);
 	if(!planning_scene_ro_->knowsFrameTransform(object_cog_frame_id))
@@ -220,7 +263,9 @@ public:
 	ROS_INFO_STREAM("simulate_gravity_pivoting: angle: " << angle);
 
 	//DBG
+	#ifdef DBG_BTN
 	std::cout << "simulate_gravity_pivoting check angle! [button]" << std::endl; std::cin >> ans;
+	#endif
 
 	set_simulation_configuration(
 	  {( current_pivoting_angle  + angle)}, 
@@ -325,14 +370,18 @@ public:
   {
 
 	//DBG
+	#ifdef DBG_BTN
 	char ans;
 	 std::cout << "setto la configurazione iniziale [button]" << std::endl; std::cin >> ans;
+	#endif
 
 	/* Bring Simulated Robot to the initial configuration */
 	set_simulation_configuration(goal->start_config, goal->start_config_joint_names);
 
 	//DBG
+	#ifdef DBG_BTN
 	 std::cout << "configurazione iniziale settata [button]" << std::endl; std::cin >> ans;
+	 #endif
 
 	moveit::planning_interface::MoveGroupInterface move_group_arm(goal->group_arm_name);
 
@@ -341,7 +390,9 @@ public:
 	trajectory_msgs::JointTrajectory planned_traj;
 
 	//DBG
+	#ifdef DBG_BTN
 	 std::cout << "Pianifico standard [button]" << std::endl; std::cin >> ans;
+	 #endif
 
 	if(
 		plan(
@@ -363,7 +414,9 @@ public:
 	}
 
 	//DBG
+	#ifdef DBG_BTN
 	 std::cout << "pianifico standard fallito [button]" << std::endl; std::cin >> ans;
+	 #endif
 
 	ROS_INFO("Solution NOT found in standard mode");
 
@@ -380,7 +433,9 @@ public:
 	moveit::planning_interface::MoveGroupInterface move_group_pivoting(goal->group_arm_pivoting_name);
 
 	//DBG
+	#ifdef DBG_BTN
 	 std::cout << "change attached obj state [button]" << std::endl; std::cin >> ans;
+	 #endif
 
 	// ATTACH object to the pivoting joint
 	std::string link_was_attached =
@@ -397,22 +452,27 @@ public:
 
 
 	//DBG
+	#ifdef DBG_BTN
 	print_collision_obj_state(planning_scene_monitor_);
 	 std::cout << "attached obj state changed [button]" << std::endl; std::cin >> ans;
-
 	 std::cout << "simulate pivoting [button]" << std::endl; std::cin >> ans;
+	 #endif
+
 	simulate_gravity_pivoting(
 	  goal->attached_object_id + "/" + goal->cog_subframe,
 	  move_group_pivoting.getJointNames().back(),
-	  move_group_pivoting.getCurrentJointValues().back(),
-	  "robot_description"
+	  move_group_pivoting.getCurrentJointValues().back()
 	);
 
 	//DBG
+	#ifdef DBG_BTN
 	 std::cout << "pivoting simulated [button]" << std::endl; std::cin >> ans;
+	 #endif
 
 	//DBG
+	#ifdef DBG_BTN
 	 std::cout << "plan fake pivoting motion [button]" << std::endl; std::cin >> ans;
+	 #endif
 
 	if(
 		!plan(
@@ -430,7 +490,9 @@ public:
 	}
 
 	//DBG
+	#ifdef DBG_BTN
 	std::cout << "fake pivoting planned [button]" << std::endl; std::cin >> ans;
+	#endif
 
 	std::vector<std::string> fake_traj_joint_names = planned_traj.joint_names;
 	std::vector<double> post_pivoting_joint_position = planned_traj.points.front().positions;
@@ -446,9 +508,13 @@ public:
 	);
 
 	//DBG
+	#ifdef DBG_BTN
 	 std::cout << "Constraints: " << pivoting_fixed_position_constraint << std::endl;
+	 #endif
 
-	if( isVertical(goal->target_pose, move_group_arm.getPoseReferenceFrame() ) )
+	 bool is_vertical = isVertical(goal->target_pose, move_group_arm.getPoseReferenceFrame() );
+
+	if( is_vertical )
 	{
 		res.pivoting_mode.push_back(true);
 		res.pivoting_mode.push_back(false);
@@ -458,6 +524,9 @@ public:
 		ROS_ERROR("NON VERTICAL CASE NOT IMPLEMENTED");
 		as_.setAborted();
 		return;
+
+		ROS_INFO("NON VERTICAL FINAL POSE!");
+
 		// res.pivoting_mode.push_back(true);
 		// res.pivoting_mode.push_back(false);
 		// res.pivoting_mode.push_back(false);
@@ -473,9 +542,24 @@ public:
 
 		// res.planned_trajectories.push_back(planned_traj);
 		// set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);
+
+		// At this point the object should be vertical
+		// simulate_gravity_pivoting_not_attached(
+		// goal->attached_object_id + "/" + goal->cog_subframe,
+		// move_group_pivoting.getJointNames().back(),
+		// move_group_pivoting.getCurrentJointValues().back(),
+		// "robot_description",
+		// goal->attached_object_id,
+		// move_group_pivoting.getLinkNames().back()
+		// );
+
+
 	}
 
+	#ifdef DBG_BTN
 	 std::cout << "computing p_p [button]" << std::endl; std::cin >> ans;
+	#endif
+	
 	geometry_msgs::PoseStamped p_p = compute_after_pivoting_pose(
 		fake_traj_joint_names,
 		post_pivoting_joint_position,
@@ -485,10 +569,11 @@ public:
 	);
 
 	//DBG	
+	#ifdef DBG_BTN
 	 std::cout << p_p << std::endl;
 	 std::cout << "p_p computed [button]" << std::endl; std::cin >> ans;
-
 	 std::cout << "change attach grasp state [button]" << std::endl; std::cin >> ans;
+	 #endif
 
 	// TODO, is it possible to use move_group_pivoting here? In order to simulate the actual real robot motion
 
@@ -505,11 +590,15 @@ public:
 	);
 
 	//DBG
+	#ifdef DBG_BTN
 	print_collision_obj_state(planning_scene_monitor_);
 	 std::cout << "attach grasp state changed [button]" << std::endl; std::cin >> ans;
+	 #endif
 
 	//DBG
+	#ifdef DBG_BTN
 	 std::cout << "plan p_p [button]" << std::endl; std::cin >> ans;
+	 #endif
 	
 	if(
 		!plan(
@@ -528,51 +617,38 @@ public:
 	}
 
 	//DBG
+	#ifdef DBG_BTN
 	 std::cout << "p_p planned [button]" << std::endl; std::cin >> ans;
+	 #endif
 	
 	res.planned_trajectories.push_back(planned_traj);
 	set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);
 
 	//DBG
+	#ifdef DBG_BTN
 	 std::cout << "simulate pivoting [button]" << std::endl; std::cin >> ans;
+	 #endif
 
 
-	// TO simulate pivoting, attach obj to pivoting link
-	// ATTACH object to the pivoting joint
-	link_was_attached =
-		detachCollisionObject(
-			planning_scene_monitor_,
-			goal->attached_object_id, 
-			tf2_buffer_,
-			"robot_description"
+	// TO simulate pivoting, attach obj to pivoting link (only if final pose is vertical)
+	if(is_vertical)
+		simulate_gravity_pivoting_not_attached(
+		goal->attached_object_id + "/" + goal->cog_subframe,
+		move_group_pivoting.getJointNames().back(),
+		move_group_pivoting.getCurrentJointValues().back(),
+		goal->attached_object_id,
+		move_group_pivoting.getLinkNames().back()
 		);
-	attachCollisionObject(
-	  goal->attached_object_id, 
-	  move_group_pivoting.getLinkNames().back()
-	);
-	simulate_gravity_pivoting(
-	  goal->attached_object_id + "/" + goal->cog_subframe,
-	  move_group_pivoting.getJointNames().back(),
-	  move_group_pivoting.getCurrentJointValues().back(),
-	  "robot_description"
-	);
-	// ATTACH object to the standard link
-	detachCollisionObject(
-	  planning_scene_monitor_,
-	  goal->attached_object_id, 
-	  tf2_buffer_,
-	  "robot_description"
-	);
-	attachCollisionObject(
-	  goal->attached_object_id, 
-	  link_was_attached
-	);
 
 	//DBG
+	#ifdef DBG_BTN
 	 std::cout << "pivoting simulated [button]" << std::endl; std::cin >> ans;
+	 #endif
 
 	//DBG
+	#ifdef DBG_BTN
 	 std::cout << "final standard plan [button]" << std::endl; std::cin >> ans;
+	 #endif
 
 	if(
 		!plan(
@@ -591,7 +667,9 @@ public:
 	}
 
 	//DBG
+	#ifdef DBG_BTN
 	 std::cout << "final standard plan done [button]" << std::endl; std::cin >> ans;
+	 #endif
 
 	res.planned_trajectories.push_back(planned_traj);
 	set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);

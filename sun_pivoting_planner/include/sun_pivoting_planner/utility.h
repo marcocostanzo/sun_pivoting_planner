@@ -128,19 +128,25 @@ double compute_traj_length(const trajectory_msgs::JointTrajectory& traj)
   {
 
 	  //DBG
+	  #ifdef DBG_BTN
 	  char ans;
 	  std::cout << "detachCollisionObject init [button]" << std::endl;std::cin >> ans;
 	  std::cout << "detachCollisionObject print state: [button]" << std::endl;std::cin >> ans;
 	  print_collision_obj_state(planning_scene_monitor);
 	  std::cout << "detachCollisionObject state printed [button]" << std::endl;std::cin >> ans;
+	  #endif
 
 	//DBG
+	#ifdef DBG_BTN
 	std::cout << "detachCollisionObject requestPlanningSceneState [button]" << std::endl;std::cin >> ans;
+	#endif
 
 	  planning_scene_monitor->requestPlanningSceneState();
 
 	//DBG
+	#ifdef DBG_BTN
 	std::cout << "detachCollisionObject requestPlanningSceneState DONE [button]" << std::endl;std::cin >> ans;
+	#endif
 
 		moveit_msgs::AttachedCollisionObject attached_obj;
 	  std::string link_was_attached;
@@ -149,7 +155,9 @@ double compute_traj_length(const trajectory_msgs::JointTrajectory& traj)
 	  planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
 
 	//DBG
+	#ifdef DBG_BTN
 	std::cout << "detachCollisionObject request AttachedCollisionObject [button]" << std::endl;std::cin >> ans;
+	#endif
 
 	if(!planning_scene_ro->getAttachedCollisionObjectMsg(attached_obj, attached_object_id))
 	{
@@ -161,19 +169,24 @@ double compute_traj_length(const trajectory_msgs::JointTrajectory& traj)
 	link_was_attached = attached_obj.link_name;
 
 	//DBG
+	#ifdef DBG_BTN
 	std::cout << "detachCollisionObject link_was_attached: " << link_was_attached << std::endl;
 	std::cout << "detachCollisionObject requested AttachedCollisionObject [button]" << std::endl;std::cin >> ans;
+	#endif
 
 	moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
 
 	//DBG
+	#ifdef DBG_BTN
 	std::cout << "detachCollisionObject removing from attached [button]" << std::endl;std::cin >> ans;
+	#endif
 
 	//Remove from attached
 	attached_obj.object.operation = moveit_msgs::AttachedCollisionObject::_object_type::REMOVE;
 	planning_scene_interface.applyAttachedCollisionObject(attached_obj);
 
 	//DBG
+	#ifdef DBG_BTN
 	print_collision_obj_state(planning_scene_monitor);
 	std::cout << "detachCollisionObject removed from attached [button]" << std::endl;std::cin >> ans;
 
@@ -182,11 +195,14 @@ double compute_traj_length(const trajectory_msgs::JointTrajectory& traj)
 
 	//DBG
 	std::cout << "detachCollisionObject requestPlanningSceneState [button]" << std::endl;std::cin >> ans;
+	#endif
 
 	planning_scene_monitor->requestPlanningSceneState();
 
 	//DBG
+	#ifdef DBG_BTN
 	std::cout << "detachCollisionObject requestPlanningSceneState done [button]" << std::endl;std::cin >> ans;
+	#endif
 
 	moveit_msgs::CollisionObject collision_obj;
 	{ //Scope LockedPlanningSceneRO
@@ -199,10 +215,12 @@ double compute_traj_length(const trajectory_msgs::JointTrajectory& traj)
 	} //END Scope LockedPlanningSceneRO
 
 	//DBG
+	#ifdef DBG_BTN
 	std::cout << "detachCollisionObject collision obj get done [button]" << std::endl;std::cin >> ans;
 
 	//DBG
 	std::cout << "detachCollisionObject transforming subframes [button]" << std::endl;std::cin >> ans;
+	#endif
 
 	moveit_msgs::CollisionObject new_obj = attached_obj.object;
 	new_obj.primitive_poses = collision_obj.primitive_poses;
@@ -222,17 +240,21 @@ double compute_traj_length(const trajectory_msgs::JointTrajectory& traj)
 	new_obj.header.frame_id = collision_obj.header.frame_id;
 
 	//DBG
+	#ifdef DBG_BTN
 	std::cout << "detachCollisionObject transform done [button]" << std::endl;std::cin >> ans;
 
 	//DBG
 	std::cout << "detachCollisionObject applying collision obj [button]" << std::endl;std::cin >> ans;
+	#endif
 
 	new_obj.operation = moveit_msgs::AttachedCollisionObject::_object_type::ADD;
 	planning_scene_interface.applyCollisionObject(new_obj);
 
 	//DBG
+	#ifdef DBG_BTN
 	print_collision_obj_state(planning_scene_monitor);
 	std::cout << "detachCollisionObject collision obj apply done [button]" << std::endl;std::cin >> ans;
+	#endif
 
 	return link_was_attached;
 

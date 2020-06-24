@@ -17,18 +17,20 @@ struct Joint_Conf_Constraint
   };
 
 // DEBUG
-  void print_collision_obj_state(const std::string& robot_description_id = "robot_description")
+  void print_collision_obj_state(
+	  planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
+	  const std::string& robot_description_id = "robot_description"
+	  )
   {
-	auto planning_scene_monitor = std::make_shared<planning_scene_monitor::PlanningSceneMonitor>(robot_description_id);
 	planning_scene_monitor->requestPlanningSceneState();
 
 	// Prepare structure for grasp attached collision object and pivoting attached one
-	planning_scene_monitor::LockedPlanningSceneRO planning_scene(planning_scene_monitor);
+	planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
 
 	std::vector<moveit_msgs::AttachedCollisionObject> att_col_objs;
-	planning_scene->getAttachedCollisionObjectMsgs(att_col_objs);
+	planning_scene_ro->getAttachedCollisionObjectMsgs(att_col_objs);
 	std::vector<moveit_msgs::CollisionObject> col_objs;
-	planning_scene->getCollisionObjectMsgs(col_objs);
+	planning_scene_ro->getCollisionObjectMsgs(col_objs);
 
 	 std::cout << "========PRINT DBG=========" << std::endl;
 	 std::cout << "_____Attached Collision OBJs____"<< std::endl;
@@ -119,8 +121,9 @@ double compute_traj_length(const trajectory_msgs::JointTrajectory& traj)
 
   // Return the link to which the object was attached
   std::string detachCollisionObject(
+	  planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
 	  const std::string& attached_object_id, 
-	  const tf2_ros::Buffer& tf_buffer,
+	  const std::shared_ptr<tf2_ros::Buffer>& tf2_buffer,
 	  const std::string& robot_description_id = "robot_description")
   {
 
@@ -128,24 +131,34 @@ double compute_traj_length(const trajectory_msgs::JointTrajectory& traj)
 	  char ans;
 	  std::cout << "detachCollisionObject init [button]" << std::endl;std::cin >> ans;
 	  std::cout << "detachCollisionObject print state: [button]" << std::endl;std::cin >> ans;
-	  print_collision_obj_state();
+	  print_collision_obj_state(planning_scene_monitor);
 	  std::cout << "detachCollisionObject state printed [button]" << std::endl;std::cin >> ans;
 
-	auto planning_scene_monitor = std::make_shared<planning_scene_monitor::PlanningSceneMonitor>(robot_description_id);
-	planning_scene_monitor->requestPlanningSceneState();
-	planning_scene_monitor::LockedPlanningSceneRO planning_scene(planning_scene_monitor);
+	//DBG
+	std::cout << "detachCollisionObject requestPlanningSceneState [button]" << std::endl;std::cin >> ans;
+
+	  planning_scene_monitor->requestPlanningSceneState();
+
+	//DBG
+	std::cout << "detachCollisionObject requestPlanningSceneState DONE [button]" << std::endl;std::cin >> ans;
+
+		moveit_msgs::AttachedCollisionObject attached_obj;
+	  std::string link_was_attached;
+
+	  { //Scope LockedPlanningSceneRO
+	  planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
 
 	//DBG
 	std::cout << "detachCollisionObject request AttachedCollisionObject [button]" << std::endl;std::cin >> ans;
 
-	moveit_msgs::AttachedCollisionObject attached_obj;
-	if(!planning_scene->getAttachedCollisionObjectMsg(attached_obj, attached_object_id))
+	if(!planning_scene_ro->getAttachedCollisionObjectMsg(attached_obj, attached_object_id))
 	{
 		ROS_ERROR("detachCollisionObject unable to find attached object id");
 		throw attached_collision_object_not_found("detachCollisionObject unable to find attached object id");
 	}
+	} //END Scope LockedPlanningSceneRO
 
-	std::string link_was_attached = attached_obj.link_name;
+	link_was_attached = attached_obj.link_name;
 
 	//DBG
 	std::cout << "detachCollisionObject link_was_attached: " << link_was_attached << std::endl;
@@ -161,21 +174,29 @@ double compute_traj_length(const trajectory_msgs::JointTrajectory& traj)
 	planning_scene_interface.applyAttachedCollisionObject(attached_obj);
 
 	//DBG
-	print_collision_obj_state();
+	print_collision_obj_state(planning_scene_monitor);
 	std::cout << "detachCollisionObject removed from attached [button]" << std::endl;std::cin >> ans;
 
 	//DBG
 	std::cout << "detachCollisionObject getting Collision obj [button]" << std::endl;std::cin >> ans;
 
-	auto planning_scene_monitor2 = std::make_shared<planning_scene_monitor::PlanningSceneMonitor>(robot_description_id);
-	planning_scene_monitor2->requestPlanningSceneState();
-	planning_scene_monitor::LockedPlanningSceneRO planning_scene2(planning_scene_monitor);
+	//DBG
+	std::cout << "detachCollisionObject requestPlanningSceneState [button]" << std::endl;std::cin >> ans;
+
+	planning_scene_monitor->requestPlanningSceneState();
+
+	//DBG
+	std::cout << "detachCollisionObject requestPlanningSceneState done [button]" << std::endl;std::cin >> ans;
+
 	moveit_msgs::CollisionObject collision_obj;
-	if(!planning_scene2->getCollisionObjectMsg(collision_obj, attached_object_id))
+	{ //Scope LockedPlanningSceneRO
+	planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
+	if(!planning_scene_ro->getCollisionObjectMsg(collision_obj, attached_object_id))
 	{
 		ROS_ERROR("detachCollisionObject unable to find collision object id");
 		throw collision_object_not_found("detachCollisionObject unable to find collision object id just detached");
 	}
+	} //END Scope LockedPlanningSceneRO
 
 	//DBG
 	std::cout << "detachCollisionObject collision obj get done [button]" << std::endl;std::cin >> ans;
@@ -193,7 +214,7 @@ double compute_traj_length(const trajectory_msgs::JointTrajectory& traj)
 		pose_stamped.pose = sub_pose;
 		pose_stamped.header.frame_id = new_obj.header.frame_id;
 		pose_stamped.header.stamp = time_now;
-		tf_buffer.transform(pose_stamped, pose_stamped, collision_obj.header.frame_id, ros::Duration(1.0));
+		tf2_buffer->transform(pose_stamped, pose_stamped, collision_obj.header.frame_id, ros::Duration(1.0));
 		sub_pose = pose_stamped.pose;
 	}
 
@@ -210,7 +231,7 @@ double compute_traj_length(const trajectory_msgs::JointTrajectory& traj)
 	planning_scene_interface.applyCollisionObject(new_obj);
 
 	//DBG
-	print_collision_obj_state();
+	print_collision_obj_state(planning_scene_monitor);
 	std::cout << "detachCollisionObject collision obj apply done [button]" << std::endl;std::cin >> ans;
 
 	return link_was_attached;

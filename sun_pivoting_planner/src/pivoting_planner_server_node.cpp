@@ -34,8 +34,10 @@ protected:
   ros::NodeHandle nh_;
   actionlib::SimpleActionServer<sun_pivoting_planner_msgs::PivotingPlanAction> as_; // NodeHandle instance must be created before this line.
 
-  tf2_ros::Buffer buffer_;
+  std::shared_ptr<tf2_ros::Buffer> tf2_buffer_;
   tf2_ros::TransformListener tf2_transform_listener_;
+
+  planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
 
   ros::Publisher pub_simulated_joint_;
 
@@ -50,7 +52,14 @@ public:
   PivotingPlannerActionServer(const std::string& name, const ros::NodeHandle& nh = ros::NodeHandle()) :
 	nh_(nh),
     as_(nh_, name, boost::bind(&PivotingPlannerActionServer::executePlanning, this, _1), false),
-	tf2_transform_listener_(buffer_)
+	tf2_buffer_(new tf2_ros::Buffer()),
+	tf2_transform_listener_(*tf2_buffer_.get()),
+	planning_scene_monitor_(
+		new planning_scene_monitor::PlanningSceneMonitor(
+		"robot_description",
+		tf2_buffer_
+		)
+	)
   {
     as_.start();
 	pub_simulated_joint_ = nh_.advertise<sensor_msgs::JointState>("/move_group/fake_controller_joint_states",1);
@@ -186,21 +195,32 @@ public:
 	  const std::string& robot_description_id
 	  )
   {
-	auto planning_scene_monitor = std::make_shared<planning_scene_monitor::PlanningSceneMonitor>(robot_description_id);
-	planning_scene_monitor->requestPlanningSceneState(); 
-	planning_scene_monitor::LockedPlanningSceneRO planning_scene(planning_scene_monitor);
-	if(!planning_scene->knowsFrameTransform(object_cog_frame_id))
+
+	  //DBG
+	  char ans;
+	 std::cout << "simulate_gravity_pivoting request planning state init [button]" << std::endl; std::cin >> ans;
+
+	planning_scene_monitor_->requestPlanningSceneState();
+
+	//DBG
+	std::cout << "simulate_gravity_pivoting request planning state done [button]" << std::endl; std::cin >> ans;
+
+	planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro_(planning_scene_monitor_);
+	if(!planning_scene_ro_->knowsFrameTransform(object_cog_frame_id))
 	{
 		throw unknown_frame_transform("Unknown frame transform");
 	}
 	// This transform is from the model frame to object_cog_frame_id
 	// model frame is ASSUMED to be world, i.e. z axis oriented as -g
-	auto transform = planning_scene->getFrameTransform(object_cog_frame_id);
+	auto transform = planning_scene_ro_->getFrameTransform(object_cog_frame_id);
 	Eigen::Vector3d z_cog = transform.rotation().col(2);
 	Eigen::Vector3d z_world(0,0,1);
 	double angle = acos( z_cog.dot(z_world) / ( z_cog.norm() * z_world.norm() ) );
 
 	ROS_INFO_STREAM("simulate_gravity_pivoting: angle: " << angle);
+
+	//DBG
+	std::cout << "simulate_gravity_pivoting check angle! [button]" << std::endl; std::cin >> ans;
 
 	set_simulation_configuration(
 	  {( current_pivoting_angle  + angle)}, 
@@ -220,7 +240,7 @@ public:
 	pivoting_link_pose.header.frame_id = pivoting_link;
 	pivoting_link_pose.pose.orientation.w = 1.0;
 	pivoting_link_pose.header.stamp = ros::Time::now();
-	pivoting_link_pose = buffer_.transform(pivoting_link_pose, robot_reference_frame_id, ros::Duration(1.0));
+	pivoting_link_pose = tf2_buffer_->transform(pivoting_link_pose, robot_reference_frame_id, ros::Duration(1.0));
 
 	//Position Constraint
 	moveit_msgs::PositionConstraint pos_const;
@@ -257,7 +277,7 @@ public:
 
 	geometry_msgs::PoseStamped pose_world;
 	pose.header.stamp = ros::Time::now();
-	buffer_.transform(pose, pose_world, vertical_reference_frame, ros::Duration(1.0));
+	tf2_buffer_->transform(pose, pose_world, vertical_reference_frame, ros::Duration(1.0));
 
 	Eigen::Quaterniond pose_quaternion;
 
@@ -285,7 +305,7 @@ public:
 	  pose_orientation_gripper.pose.orientation.w = 1.0;
 	  pose_orientation_gripper.header.stamp = ros::Time::now();
 	  pose_orientation_gripper.header.frame_id = gripper_grasp_frame_id;
-	  pose_orientation_gripper = buffer_.transform(pose_orientation_gripper, robot_reference_frame, ros::Duration(1.0));
+	  pose_orientation_gripper = tf2_buffer_->transform(pose_orientation_gripper, robot_reference_frame, ros::Duration(1.0));
 
 	  set_simulation_configuration(initial_joint_position, joint_names);
 
@@ -293,7 +313,7 @@ public:
 	  pose_position_gripper.pose.orientation.w = 1.0;
 	  pose_position_gripper.header.stamp = ros::Time::now();
 	  pose_position_gripper.header.frame_id = gripper_grasp_frame_id;
-	  pose_position_gripper = buffer_.transform(pose_position_gripper, robot_reference_frame, ros::Duration(1.0));
+	  pose_position_gripper = tf2_buffer_->transform(pose_position_gripper, robot_reference_frame, ros::Duration(1.0));
 
 	  geometry_msgs::PoseStamped pose_gripper = pose_position_gripper;
 	  pose_gripper.pose.orientation = pose_orientation_gripper.pose.orientation;
@@ -365,8 +385,9 @@ public:
 	// ATTACH object to the pivoting joint
 	std::string link_was_attached =
 		detachCollisionObject(
+			planning_scene_monitor_,
 			goal->attached_object_id, 
-			buffer_,
+			tf2_buffer_,
 			"robot_description"
 		);
 	attachCollisionObject(
@@ -374,7 +395,9 @@ public:
 	  move_group_pivoting.getLinkNames().back()
 	);
 
+
 	//DBG
+	print_collision_obj_state(planning_scene_monitor_);
 	 std::cout << "attached obj state changed [button]" << std::endl; std::cin >> ans;
 
 	 std::cout << "simulate pivoting [button]" << std::endl; std::cin >> ans;
@@ -471,8 +494,9 @@ public:
 
 	// ATTACH object to the standard link
 	detachCollisionObject(
+	  planning_scene_monitor_,
 	  goal->attached_object_id, 
-	  buffer_,
+	  tf2_buffer_,
 	  "robot_description"
 	);
 	attachCollisionObject(
@@ -481,6 +505,7 @@ public:
 	);
 
 	//DBG
+	print_collision_obj_state(planning_scene_monitor_);
 	 std::cout << "attach grasp state changed [button]" << std::endl; std::cin >> ans;
 
 	//DBG
@@ -511,11 +536,36 @@ public:
 	//DBG
 	 std::cout << "simulate pivoting [button]" << std::endl; std::cin >> ans;
 
+
+	// TO simulate pivoting, attach obj to pivoting link
+	// ATTACH object to the pivoting joint
+	link_was_attached =
+		detachCollisionObject(
+			planning_scene_monitor_,
+			goal->attached_object_id, 
+			tf2_buffer_,
+			"robot_description"
+		);
+	attachCollisionObject(
+	  goal->attached_object_id, 
+	  move_group_pivoting.getLinkNames().back()
+	);
 	simulate_gravity_pivoting(
 	  goal->attached_object_id + "/" + goal->cog_subframe,
 	  move_group_pivoting.getJointNames().back(),
 	  move_group_pivoting.getCurrentJointValues().back(),
 	  "robot_description"
+	);
+	// ATTACH object to the standard link
+	detachCollisionObject(
+	  planning_scene_monitor_,
+	  goal->attached_object_id, 
+	  tf2_buffer_,
+	  "robot_description"
+	);
+	attachCollisionObject(
+	  goal->attached_object_id, 
+	  link_was_attached
 	);
 
 	//DBG
@@ -558,7 +608,6 @@ public:
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "pivoting_planner_server");
-
   sun::PivotingPlannerActionServer pivoting_planner("pivoting_plan_action");
   ros::spin();
 

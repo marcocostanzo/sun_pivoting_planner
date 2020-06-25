@@ -5,7 +5,6 @@
 
 namespace sun
 {
-
 class pivoting_planner_error : public std::runtime_error
 {
 public:

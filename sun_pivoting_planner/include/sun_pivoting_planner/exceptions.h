@@ -38,6 +38,14 @@ public:
   }
 };
 
+class invalid_gravity_pivoting_angle : public pivoting_planner_error
+{
+public:
+  invalid_gravity_pivoting_angle(std::string const& msg) : pivoting_planner_error(msg)
+  {
+  }
+};
+
 }  // namespace sun
 
 #endif

@@ -21,7 +21,7 @@
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
-//#define DBG_BTN
+// #define DBG_BTN
 #undef DBG_BTN
 
 #include "sun_pivoting_planner/utility.h"
@@ -213,6 +213,7 @@ public:
 	simulate_gravity_pivoting(
 	  object_cog_frame_id,
 	  pivoting_joint_name,
+	  pivoting_link_name,
 	  current_pivoting_angle
 	);
 	// ATTACH object to the standard link
@@ -231,6 +232,7 @@ public:
   void simulate_gravity_pivoting(
 	  const std::string& object_cog_frame_id,
 	  const std::string& pivoting_joint_name,
+	  const std::string& pivoting_link_name,
 	  double current_pivoting_angle
 	  )
   {
@@ -251,14 +253,60 @@ public:
 	planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro_(planning_scene_monitor_);
 	if(!planning_scene_ro_->knowsFrameTransform(object_cog_frame_id))
 	{
-		throw unknown_frame_transform("Unknown frame transform");
+		throw unknown_frame_transform("Unknown object_cog_frame_id transform " + object_cog_frame_id);
 	}
+	if(!planning_scene_ro_->knowsFrameTransform(pivoting_link_name))
+	{
+		throw unknown_frame_transform("Unknown pivoting_link_name transform " + pivoting_link_name);
+	}
+
 	// This transform is from the model frame to object_cog_frame_id
 	// model frame is ASSUMED to be world, i.e. z axis oriented as -g
 	auto transform = planning_scene_ro_->getFrameTransform(object_cog_frame_id);
 	Eigen::Vector3d z_cog = transform.rotation().col(2);
 	Eigen::Vector3d z_world(0,0,1);
+
 	double angle = acos( z_cog.dot(z_world) / ( z_cog.norm() * z_world.norm() ) );
+
+	// ASSUMPTION: pivoting joint axis is y
+	auto pivoting_link_transform = planning_scene_ro_->getFrameTransform(pivoting_link_name);
+	Eigen::Vector3d piv_joint = pivoting_link_transform.rotation().col(1);
+
+	//DBG
+	#ifdef DBG_BTN
+	std::cout << "piv_joint: " << piv_joint << std::endl;
+	#endif
+
+	Eigen::Vector3d cross = z_cog.cross(z_world);
+
+	//DBG
+	#ifdef DBG_BTN
+	std::cout << "cross: " << cross << std::endl;
+	#endif
+
+	double cross_angle = acos( cross.dot(piv_joint) / ( cross.norm() * piv_joint.norm() ) );
+
+	if( cross_angle < 0.01 )
+	{
+		//angle = angle;
+		//DBG
+		#ifdef DBG_BTN
+		std::cout << "0 cross_angle" << std::endl;
+		#endif
+	}
+	else if( (cross_angle - M_PI) < 0.01 )
+	{
+		angle = -angle;
+
+		//DBG
+		#ifdef DBG_BTN
+		std::cout << "-pi cross_angle" << std::endl;
+		#endif
+	}
+	else
+	{
+		throw invalid_gravity_pivoting_angle("The angle between cross and piv_joint is invalid " + std::to_string(cross_angle) );
+	}
 
 	ROS_INFO_STREAM("simulate_gravity_pivoting: angle: " << angle);
 
@@ -366,6 +414,55 @@ public:
 	  return pose_gripper;
   }
 
+
+
+geometry_msgs::PoseStamped compute_non_vertical_pivoting_pose(
+	const std::vector<std::string>& joint_names,
+	const std::vector<double>& initial_joint_position,
+	const std::vector<double>& fake_final_joint_position,
+	const std::string& gripper_grasp_frame_id,
+	const std::string& robot_reference_frame,
+	const std::string& pivoting_frame_id
+)
+{
+
+	set_simulation_configuration(fake_final_joint_position, joint_names);
+
+	geometry_msgs::PoseStamped pivoting_pose_grasp;
+	pivoting_pose_grasp.pose.orientation.w = 1.0;
+	pivoting_pose_grasp.header.stamp = ros::Time::now();
+	pivoting_pose_grasp.header.frame_id = gripper_grasp_frame_id;
+	pivoting_pose_grasp = tf2_buffer_->transform(pivoting_pose_grasp, pivoting_frame_id, ros::Duration(1.0));
+
+	Eigen::Quaterniond pivoting_quaternion_grasp;
+	tf2::fromMsg(pivoting_pose_grasp.pose.orientation, pivoting_quaternion_grasp);
+
+	set_simulation_configuration(initial_joint_position, joint_names);
+
+	geometry_msgs::PoseStamped pose_pivoting;
+	pose_pivoting.pose.orientation.w = 1.0;
+	pose_pivoting.header.stamp = ros::Time::now();
+	pose_pivoting.header.frame_id = pivoting_frame_id;
+	pose_pivoting = tf2_buffer_->transform(pose_pivoting, robot_reference_frame, ros::Duration(1.0));
+
+	Eigen::Quaterniond quaternion_pivoting;
+	tf2::fromMsg(pose_pivoting.pose.orientation, quaternion_pivoting);
+
+	Eigen::Quaterniond quaternion_grasp = quaternion_pivoting*pivoting_quaternion_grasp;
+
+	geometry_msgs::PoseStamped pose_grasp;
+	pose_grasp.pose.orientation.w = 1.0;
+	pose_grasp.header.stamp = ros::Time::now();
+	pose_grasp.header.frame_id = gripper_grasp_frame_id;
+	pose_grasp = tf2_buffer_->transform(pose_grasp, robot_reference_frame, ros::Duration(1.0));
+
+	pose_grasp.pose.orientation = tf2::toMsg(quaternion_grasp);
+
+	return pose_grasp;
+
+}
+
+
   void executePlanning(const sun_pivoting_planner_msgs::PivotingPlanGoalConstPtr &goal)
   {
 
@@ -401,7 +498,8 @@ public:
 			goal->target_pose, 
 			goal->path_constraints, 
 			planned_traj, 
-			true)
+			true
+		)
 	  )
 	{
 		set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);
@@ -461,6 +559,7 @@ public:
 	simulate_gravity_pivoting(
 	  goal->attached_object_id + "/" + goal->cog_subframe,
 	  move_group_pivoting.getJointNames().back(),
+	  move_group_pivoting.getLinkNames().back(),
 	  move_group_pivoting.getCurrentJointValues().back()
 	);
 
@@ -481,7 +580,8 @@ public:
 			goal->target_pose, 
 			goal->path_constraints, 
 			planned_traj, 
-			true)
+			false
+		)
 	  )
 	{
 		ROS_INFO("Fail to plan the fake pivoting trajectory");
@@ -521,38 +621,52 @@ public:
 	}
 	else
 	{
-		ROS_ERROR("NON VERTICAL CASE NOT IMPLEMENTED");
-		as_.setAborted();
-		return;
 
 		ROS_INFO("NON VERTICAL FINAL POSE!");
 
-		// res.pivoting_mode.push_back(true);
-		// res.pivoting_mode.push_back(false);
-		// res.pivoting_mode.push_back(false);
+		res.pivoting_mode.push_back(true);
+		res.pivoting_mode.push_back(false);
+		res.pivoting_mode.push_back(false);
 
-		// geometry_msgs::PoseStamped p_s = compute_non_vertical_pivoting_pose();
+		geometry_msgs::PoseStamped p_s = 
+			compute_non_vertical_pivoting_pose(
+				fake_traj_joint_names,
+				post_pivoting_joint_position,
+				fake_traj_final_joint_position,
+				move_group_arm.getLinkNames().back(),
+				move_group_pivoting.getPoseReferenceFrame(),
+				move_group_pivoting.getLinkNames().back()
+			);
 
-		// if(!plan(move_group_arm, p_s, pivoting_fixed_position_constraint, planned_traj, false))
-		// {
-		// 	ROS_INFO("Fail to plan in pivoting mode");
-		// 	as_.setAborted();
-		// 	return;
-		// }
+		if(
+			!plan(
+				move_group_arm, 
+				move_group_arm.getLinkNames().back(), 
+				p_s, 
+				pivoting_fixed_position_constraint, 
+				planned_traj, 
+				false
+			)
+			)
+		{
+			ROS_INFO("Fail to plan in pivoting mode");
+			as_.setAborted();
+			return;
+		}
 
-		// res.planned_trajectories.push_back(planned_traj);
-		// set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);
+		res.planned_trajectories.push_back(planned_traj);
+		set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);
 
 		// At this point the object should be vertical
-		// simulate_gravity_pivoting_not_attached(
-		// goal->attached_object_id + "/" + goal->cog_subframe,
-		// move_group_pivoting.getJointNames().back(),
-		// move_group_pivoting.getCurrentJointValues().back(),
-		// "robot_description",
-		// goal->attached_object_id,
-		// move_group_pivoting.getLinkNames().back()
-		// );
+		simulate_gravity_pivoting_not_attached(
+			goal->attached_object_id + "/" + goal->cog_subframe,
+			move_group_pivoting.getJointNames().back(),
+			move_group_pivoting.getCurrentJointValues().back(),
+			goal->attached_object_id,
+			move_group_pivoting.getLinkNames().back()
+		);
 
+		post_pivoting_joint_position = move_group_pivoting.getCurrentJointValues();
 
 	}
 

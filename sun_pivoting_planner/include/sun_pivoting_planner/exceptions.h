@@ -45,6 +45,14 @@ public:
   }
 };
 
+class subframe_not_found : public pivoting_planner_error
+{
+public:
+  subframe_not_found(std::string const& msg) : pivoting_planner_error(msg)
+  {
+  }
+};
+
 }  // namespace sun
 
 #endif

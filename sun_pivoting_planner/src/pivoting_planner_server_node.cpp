@@ -46,9 +46,10 @@ protected:
   Joint_Conf_Constraint joint_conf_constraint_;
   std::vector<double> joint_conf_constraint_relax_;
 
-  double plan_time = 5.0;
+  double plan_time = 6.0;
   int num_planning_attempts = 4;
   std::string plannerID = "PRMstar";
+//   std::string plannerID = "RRTstar";
 
 public:
   PivotingPlannerActionServer(const std::string& name, const ros::NodeHandle& nh = ros::NodeHandle())
@@ -72,7 +73,7 @@ public:
 	// joint_conf_constraint_.move_range.push_back((2.0*170.0)/1.0 *M_PI/180.0);
 	// joint_conf_constraint_.move_range.push_back((2.0*120.0)/1.0 *M_PI/180.0);
 
-	joint_conf_constraint_relax_ = { 1.5, 2.0, 4.0 };
+	joint_conf_constraint_relax_ = { 1.0, 1.5, 2.0, 4.0 };
   }
 
   ~PivotingPlannerActionServer(void)
@@ -110,7 +111,7 @@ public:
 
 	ros::Time time0 = ros::Time::now();
 
-	while (!success && num_attempts<joint_conf_constraint_relax_.size())
+	while (!success && num_attempts < joint_conf_constraint_relax_.size())
 	{
 	  ROS_INFO_STREAM("pivoting_planner attempt #" << num_attempts);
 	  ROS_INFO_STREAM("Elapsed Time: " << (ros::Time::now() - time0).toSec() / 60.0 << " m");
@@ -182,11 +183,11 @@ public:
 											  const std::string& pivoting_link_name)
   {
 	std::string link_was_attached =
-		detachCollisionObject(planning_scene_monitor_, attached_object_id, tf2_buffer_, "robot_description");
+		detachCollisionObject(planning_scene_monitor_, attached_object_id, "robot_description");
 	attachCollisionObject(attached_object_id, pivoting_link_name);
 	simulate_gravity_pivoting(object_cog_frame_id, pivoting_joint_name, pivoting_link_name, current_pivoting_angle);
 	// ATTACH object to the standard link
-	detachCollisionObject(planning_scene_monitor_, attached_object_id, tf2_buffer_, "robot_description");
+	detachCollisionObject(planning_scene_monitor_, attached_object_id, "robot_description");
 	attachCollisionObject(attached_object_id, link_was_attached);
   }
 
@@ -296,9 +297,9 @@ public:
 	pos_const.target_point_offset.z = 0.0;
 	shape_msgs::SolidPrimitive box_primitive;
 	box_primitive.type = shape_msgs::SolidPrimitive::BOX;
-	box_primitive.dimensions.push_back(0.0005);  // x
-	box_primitive.dimensions.push_back(0.0005);  // y
-	box_primitive.dimensions.push_back(0.0005);  // z
+	box_primitive.dimensions.push_back(0.05);  // x
+	box_primitive.dimensions.push_back(0.05);  // y
+	box_primitive.dimensions.push_back(0.05);  // z
 	pos_const.constraint_region.primitives.push_back(box_primitive);
 	pos_const.constraint_region.primitive_poses.push_back(pivoting_link_pose.pose);
 	pos_const.weight = 1.0;
@@ -473,7 +474,7 @@ public:
 
 	// ATTACH object to the pivoting joint
 	std::string link_was_attached =
-		detachCollisionObject(planning_scene_monitor_, goal->attached_object_id, tf2_buffer_, "robot_description");
+		detachCollisionObject(planning_scene_monitor_, goal->attached_object_id, "robot_description");
 	attachCollisionObject(goal->attached_object_id, move_group_pivoting.getLinkNames().back());
 
 // DBG
@@ -502,7 +503,7 @@ public:
 #endif
 
 	if (!plan(move_group_pivoting, goal->end_effector_frame_id, goal->target_pose, goal->path_constraints, planned_traj,
-			  false))
+			  true))
 	{
 	  ROS_INFO("Fail to plan the fake pivoting trajectory");
 	  as_.setAborted();
@@ -522,8 +523,8 @@ public:
 	sun_pivoting_planner_msgs::PivotingPlanResult res;
 
 	moveit_msgs::Constraints pivoting_fixed_position_constraint = goal->path_constraints;
-	add_pivoting_constraints(pivoting_fixed_position_constraint, move_group_pivoting.getLinkNames().back(),
-							 move_group_pivoting.getPoseReferenceFrame());
+	add_pivoting_constraints(pivoting_fixed_position_constraint, move_group_arm.getLinkNames().back(),
+							 move_group_arm.getPoseReferenceFrame());
 
 // DBG
 #ifdef DBG_BTN
@@ -591,7 +592,7 @@ public:
 	// TODO, is it possible to use move_group_pivoting here? In order to simulate the actual real robot motion
 
 	// ATTACH object to the standard link
-	detachCollisionObject(planning_scene_monitor_, goal->attached_object_id, tf2_buffer_, "robot_description");
+	detachCollisionObject(planning_scene_monitor_, goal->attached_object_id, "robot_description");
 	attachCollisionObject(goal->attached_object_id, link_was_attached);
 
 // DBG

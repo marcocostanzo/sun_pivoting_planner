@@ -104,8 +104,8 @@ tf2_eigen
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES sun_pivoting_planner
+ INCLUDE_DIRS include
+ LIBRARIES ${PROJECT_NAME}_utility
 #  CATKIN_DEPENDS other_catkin_pkg
 #  DEPENDS system_lib
 )
@@ -122,9 +122,13 @@ ${catkin_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
-# add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/sun_pivoting_planner.cpp
-# )
+add_library(${PROJECT_NAME}_utility
+  src/${PROJECT_NAME}/utility.cpp
+)
+target_link_libraries(${PROJECT_NAME}_utility
+  ${catkin_LIBRARIES}
+  yaml-cpp
+)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -208,6 +212,12 @@ ${catkin_INCLUDE_DIRS}
 
 ##########################################
 add_executable(pivoting_planner_server src/pivoting_planner_server_node.cpp)
-target_link_libraries(pivoting_planner_server ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+target_link_libraries(pivoting_planner_server ${catkin_LIBRARIES} ${Boost_LIBRARIES} ${PROJECT_NAME}_utility)
 add_dependencies(pivoting_planner_server ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+##########################################
+
+##########################################
+add_executable(pick_place_server src/pick_place_server_node.cpp)
+target_link_libraries(pick_place_server ${catkin_LIBRARIES} ${Boost_LIBRARIES} ${PROJECT_NAME}_utility)
+add_dependencies(pick_place_server ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 ##########################################

@@ -1,0 +1,59 @@
+# pick place with pivoting action
+
+#GOAL DEFINITION
+
+# The full starting configuration of the robot at the beginning
+float64[] start_config
+string[] start_config_joint_names
+
+# The name of the group that should be used to plan without pivoting
+string group_arm_name
+
+# Name of the grasp Link
+string grasp_link
+
+# The target pose
+geometry_msgs/PoseStamped place_pose
+# The subframe id to be aligned to the place_pose
+string place_endeffector
+
+# Optional pre place pose, if pre_place_effector is empty, the pre place pose is skipped
+geometry_msgs/PoseStamped pre_place_pose
+# The subframe id to be aligned to the pre_place_pose
+string pre_place_endeffector
+
+# Object type - this has to match with an object in the DB
+string object_type
+# Object id in the moveit scene
+string object_id
+
+# Optional constraints to be imposed on every point in the motion plan
+moveit_msgs/Constraints path_constraints
+
+# PIVOTING PLAN ##
+
+# Assumptions:
+# - Grasp point on the positive z-axis of object/cog_frame
+
+# Activate/Deativate gripper/object pivoting capability to the planner
+bool activate_pivoting
+
+# The name of the group that should be used to plan with pivoting
+string group_arm_pivoting_name
+
+---
+
+#RESULT DEFINITION
+trajectory_msgs/JointTrajectory pre_grasp_traj
+
+string grasp_subframe
+string pre_grasp_subframe
+
+trajectory_msgs/JointTrajectory[] pre_place_traj
+bool[] pre_place_pivoting_mode
+
+trajectory_msgs/JointTrajectory[] place_traj
+bool[] place_pivoting_mode
+
+---
+#FEEDBACK

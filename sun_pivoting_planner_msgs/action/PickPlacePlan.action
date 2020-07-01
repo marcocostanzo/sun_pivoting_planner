@@ -22,8 +22,6 @@ geometry_msgs/PoseStamped pre_place_pose
 # The subframe id to be aligned to the pre_place_pose
 string pre_place_endeffector
 
-# Object type - this has to match with an object in the DB
-string object_type
 # Object id in the moveit scene
 string object_id
 

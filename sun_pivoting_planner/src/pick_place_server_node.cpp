@@ -23,8 +23,8 @@
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
-#define DBG_BTN
-// #undef DBG_BTN
+// #define DBG_BTN
+#undef DBG_BTN
 
 #include "sun_pivoting_planner/exceptions.h"
 #include "sun_pivoting_planner/utility.h"
@@ -67,12 +67,27 @@ public:
 
   void executePlanning(const sun_pivoting_planner_msgs::PickPlacePlanGoalConstPtr& goal)
   {
-	std::string db_folder = "/home/yaskawa/workspaces/ws_automatica2020/src/automatica2020/automatica2020/db/";
+
+	// Get the collision object initial state  
+	moveit_msgs::CollisionObject collision_obj_initial_state;
+	{  // Scope LockedPlanningSceneRO
+	  planning_scene_monitor_->requestPlanningSceneState();
+	  planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor_);
+	  if (!planning_scene_ro->getCollisionObjectMsg(collision_obj_initial_state, goal->object_id))
+	  {
+		ROS_ERROR_STREAM("executePlanning pick_place unable to find collision object id " << goal->object_id);
+		as_.setAborted();
+		return;
+	  }
+	}  // END Scope LockedPlanningSceneRO
+
+	std::string db_folder = collision_obj_initial_state.type.db;
+	std::string obj_type = collision_obj_initial_state.type.key;
 
 	YAML::Node obj_yaml;
 	try
 	{
-	  obj_yaml = YAML::LoadFile(db_folder + goal->object_type + ".yaml");
+	  obj_yaml = YAML::LoadFile(db_folder + obj_type + ".yaml");
 	}
 	catch (YAML::BadFile err)
 	{
@@ -90,6 +105,9 @@ public:
 	int i;
 	for (i = 0; i < grasp_frames_ids.size(); i++)
 	{
+	  moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
+	  planning_scene_interface.applyCollisionObject(collision_obj_initial_state);
+
 	  ROS_INFO_STREAM("Planning using grasp #" << i << "/" << grasp_frames_ids.size());
 	  ROS_INFO_STREAM(grasp_frames_ids[i] << " " << pre_grasp_frames_ids[i]);
 
@@ -109,7 +127,7 @@ public:
 	  plannerGoal.start_config = goal->start_config;
 	  plannerGoal.start_config_joint_names = goal->start_config_joint_names;
 	  plannerGoal.target_pose = geometry_msgs::PoseStamped();
-	  plannerGoal.target_pose.header.frame_id = pre_grasp_frames_ids[i];
+	  plannerGoal.target_pose.header.frame_id = goal->object_id + "/" + pre_grasp_frames_ids[i];
 	  plannerGoal.target_pose.pose.orientation.w = 1.0;
 	  plannerGoal.end_effector_frame_id = goal->grasp_link;
 	  plannerGoal.activate_pivoting = false;
@@ -130,7 +148,7 @@ public:
 	  plannerGoal.start_config = result.pre_grasp_traj.points.back().positions;
 	  plannerGoal.start_config_joint_names = result.pre_grasp_traj.joint_names;
 	  plannerGoal.target_pose = geometry_msgs::PoseStamped();
-	  plannerGoal.target_pose.header.frame_id = grasp_frames_ids[i];
+	  plannerGoal.target_pose.header.frame_id = goal->object_id + "/" + grasp_frames_ids[i];
 	  plannerGoal.target_pose.pose.orientation.w = 1.0;
 	  plannerGoal.end_effector_frame_id = goal->grasp_link;
 	  plannerGoal.activate_pivoting = false;
@@ -167,6 +185,7 @@ public:
 
 		if (!(ac_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED))
 		{
+		  detachCollisionObject(planning_scene_monitor_, goal->object_id, "robot_description");
 		  ROS_WARN_STREAM("Plan #" << i << "/" << grasp_frames_ids.size() << " PrePlace Fail");
 		  continue;
 		}
@@ -176,9 +195,8 @@ public:
 	  }
 	  else
 	  {
-		  ROS_WARN("Preplace not present in query, The planner will skip the pre-place");
+		ROS_WARN("Preplace not present in query, The planner will skip the pre-place");
 	  }
-	  
 
 	  //* Place *//
 	  ROS_INFO_STREAM("Place");
@@ -200,6 +218,7 @@ public:
 
 	  if (!(ac_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED))
 	  {
+		detachCollisionObject(planning_scene_monitor_, goal->object_id, "robot_description");
 		ROS_WARN_STREAM("Plan #" << i << "/" << grasp_frames_ids.size() << " Place Fail");
 		continue;
 	  }
@@ -209,12 +228,14 @@ public:
 
 	  ROS_INFO_STREAM("Trajectory found at #" << i << "/" << grasp_frames_ids.size());
 
+	  detachCollisionObject(planning_scene_monitor_, goal->object_id, "robot_description");
 	  as_.setSucceeded(result);
 	  return;
-
 	}
 
 	ROS_ERROR("Unable to find a pick-place solution");
+	moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
+	planning_scene_interface.applyCollisionObject(collision_obj_initial_state);
 
 	as_.setAborted();
   }
@@ -225,7 +246,7 @@ public:
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "pivoting_pick_place_planner_server");
-  sun::PickPlacePlannerActionServer pivoting_planner("pivoting_pick_place_plan_action", "pivoting_plan_action_name");
+  sun::PickPlacePlannerActionServer pivoting_planner("pivoting_pick_place_plan_action", "pivoting_plan_action");
   ros::spin();
 
   return 0;

@@ -354,6 +354,45 @@ void moveCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planni
 #endif
 }
 
+void removeAllCollisionObjects(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor)
+{
+  planning_scene_monitor->requestPlanningSceneState();
+
+  // Get Attached collision objects
+  std::vector<moveit_msgs::AttachedCollisionObject> att_col_objs;
+  {
+  planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
+  planning_scene_ro->getAttachedCollisionObjectMsgs(att_col_objs);
+  }
+
+  //Detach all
+  for(auto& att_col_obj: att_col_objs)
+  {
+    att_col_obj.object.operation = moveit_msgs::AttachedCollisionObject::_object_type::REMOVE;
+  }
+  {
+    moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
+    planning_scene_interface.applyAttachedCollisionObjects(att_col_objs);
+  }
+
+  // Get Collision objects
+  std::vector<moveit_msgs::CollisionObject> col_objs;
+  {
+  planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
+  planning_scene_ro->getCollisionObjectMsgs(col_objs);
+  }
+  //Remove all
+  for(auto& col_obj: col_objs)
+  {
+    col_obj.operation = moveit_msgs::AttachedCollisionObject::_object_type::REMOVE;
+  }
+  {
+    moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
+    planning_scene_interface.applyCollisionObjects(col_objs);
+  }
+  
+}
+
 // Spawn a new collision object such that the object subframe 'ref_subframe_name' is located in 'pose'
 void spawnCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
                           const std::string& object_id, const std::string& object_type, const std::string& db,

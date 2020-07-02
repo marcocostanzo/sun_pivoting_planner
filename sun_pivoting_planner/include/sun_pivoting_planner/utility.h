@@ -44,6 +44,8 @@ void moveCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planni
                          const std::string& object_id, geometry_msgs::PoseStamped desired_pose,
                          const std::string& ref_subframe_name);
 
+void removeAllCollisionObjects(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor);
+
 // Spawn a new collision object such that the object subframe 'ref_subframe_name' is located in 'pose'
 void spawnCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
                           const std::string& object_id, const std::string& object_type, const std::string& db,

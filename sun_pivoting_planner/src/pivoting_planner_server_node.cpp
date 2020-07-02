@@ -46,7 +46,7 @@ protected:
   Joint_Conf_Constraint joint_conf_constraint_;
   std::vector<double> joint_conf_constraint_relax_;
 
-  double plan_time = 6.0;
+  double plan_time = 2.0;
   int num_planning_attempts = 4;
   std::string plannerID = "PRMstar";
 //   std::string plannerID = "RRTstar";
@@ -62,12 +62,13 @@ public:
 	as_.start();
 	pub_simulated_joint_ = nh_.advertise<sensor_msgs::JointState>("/move_group/fake_controller_joint_states", 1);
 
-	// joint_conf_constraint_.joint_names.push_back("iiwa_joint_1");
-	joint_conf_constraint_.joint_names.push_back("iiwa_joint_2");
-	joint_conf_constraint_.joint_names.push_back("iiwa_joint_3");
-	joint_conf_constraint_.joint_names.push_back("iiwa_joint_4");
-	joint_conf_constraint_.move_range.push_back((2.0 * 120.0) / 4.0 * M_PI / 180.0);
+	joint_conf_constraint_.joint_names.push_back("iiwa_joint_1");
 	joint_conf_constraint_.move_range.push_back((2.0 * 170.0) / 4.0 * M_PI / 180.0);
+	joint_conf_constraint_.joint_names.push_back("iiwa_joint_2");
+	joint_conf_constraint_.move_range.push_back((2.0 * 120.0) / 4.0 * M_PI / 180.0);
+	joint_conf_constraint_.joint_names.push_back("iiwa_joint_3");
+	joint_conf_constraint_.move_range.push_back((2.0 * 170.0) / 4.0 * M_PI / 180.0);
+	joint_conf_constraint_.joint_names.push_back("iiwa_joint_4");
 	joint_conf_constraint_.move_range.push_back((2.0 * 120.0) / 4.0 * M_PI / 180.0);
 	// joint_conf_constraint_.move_range.push_back((2.0*120.0)/1.0 *M_PI/180.0);
 	// joint_conf_constraint_.move_range.push_back((2.0*170.0)/1.0 *M_PI/180.0);
@@ -466,6 +467,26 @@ public:
 
 	moveit::planning_interface::MoveGroupInterface move_group_pivoting(goal->group_arm_pivoting_name);
 
+	simulate_gravity_pivoting_not_attached(goal->attached_object_id + "/" + goal->cog_subframe,
+											 move_group_pivoting.getJointNames().back(),
+											 move_group_pivoting.getCurrentJointValues().back(),
+											 goal->attached_object_id, move_group_pivoting.getLinkNames().back());
+	
+	ROS_INFO("Simple Pivoting");
+	if (plan(move_group_arm, goal->end_effector_frame_id, goal->target_pose, goal->path_constraints, planned_traj,
+			 true))
+	{
+	  set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);
+	  sun_pivoting_planner_msgs::PivotingPlanResult res;
+	  res.planned_trajectories.push_back(trajectory_msgs::JointTrajectory());
+	  res.pivoting_mode.push_back(true);
+	  res.planned_trajectories.push_back(planned_traj);
+	  res.pivoting_mode.push_back(false);
+	  ROS_INFO("Solution found in simple pivoting mode");
+	  as_.setSucceeded(res);
+	  return;
+	}
+
 // DBG
 #ifdef DBG_BTN
 	std::cout << "change attached obj state [button]" << std::endl;
@@ -485,10 +506,6 @@ public:
 	std::cout << "simulate pivoting [button]" << std::endl;
 	std::cin >> ans;
 #endif
-
-	simulate_gravity_pivoting(goal->attached_object_id + "/" + goal->cog_subframe,
-							  move_group_pivoting.getJointNames().back(), move_group_pivoting.getLinkNames().back(),
-							  move_group_pivoting.getCurrentJointValues().back());
 
 // DBG
 #ifdef DBG_BTN

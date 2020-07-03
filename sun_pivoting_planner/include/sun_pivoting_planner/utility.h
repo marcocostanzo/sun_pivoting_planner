@@ -3,14 +3,14 @@
 
 #include "trajectory_msgs/JointTrajectory.h"
 
-#include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
+#include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 
 #include "sun_pivoting_planner/exceptions.h"
 
-#include "tf2_eigen/tf2_eigen.h"
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include "tf2_eigen/tf2_eigen.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -20,6 +20,15 @@ struct Joint_Conf_Constraint
 {
   std::vector<std::string> joint_names;
   std::vector<double> move_range;
+};
+
+struct SceneObject
+{
+  std::string db;                                // database path
+  std::string type;                              // object type
+  std::string id;                                // object id
+  geometry_msgs::PoseStamped ref_subframe_pose;  // ref_subframe pose
+  std::string ref_subframe;
 };
 
 // DEBUG
@@ -40,16 +49,30 @@ std::string detachCollisionObject(planning_scene_monitor::PlanningSceneMonitorPt
 
 void attachCollisionObject(const std::string& object_id, const std::string& link_name);
 
+geometry_msgs::PoseStamped
+getCollisionObjectSubframePose(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
+                               const std::string& object_id, const std::string& subframe_name);
+
 void moveCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
                          const std::string& object_id, geometry_msgs::PoseStamped desired_pose,
                          const std::string& ref_subframe_name);
 
+void removeCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
+                           const std::string& obj_id);
+
 void removeAllCollisionObjects(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor);
+
+geometry_msgs::Pose getPoseFromYAMLNode(const YAML::Node& yaml);
 
 // Spawn a new collision object such that the object subframe 'ref_subframe_name' is located in 'pose'
 void spawnCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
-                          const std::string& object_id, const std::string& object_type, const std::string& db,
-                          const geometry_msgs::PoseStamped& pose, const std::string& ref_subframe_name);
+                          const SceneObject& obj);
+
+// Same as spawnCollisionObject but for multiple objects
+void spawnCollisionObjects(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
+                           const std::vector<SceneObject>& objs);
+
+void changeObjectRefSubframe(SceneObject& obj, const std::string& new_ref_subframe);
 
 }  // namespace sun
 

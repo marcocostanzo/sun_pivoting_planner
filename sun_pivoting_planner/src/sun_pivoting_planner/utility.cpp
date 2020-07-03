@@ -3,7 +3,6 @@
 
 namespace sun
 {
-
 // DEBUG
 void print_collision_obj_state(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
                                const std::string& robot_description_id)
@@ -108,8 +107,7 @@ void add_joint_configuration_constraints(const Joint_Conf_Constraint& joint_conf
 
 // Return the link to which the object was attached
 std::string detachCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
-                                  const std::string& attached_object_id,
-                                  const std::string& robot_description_id)
+                                  const std::string& attached_object_id, const std::string& robot_description_id)
 {
 // DBG
 #ifdef DBG_BTN
@@ -271,6 +269,41 @@ void attachCollisionObject(const std::string& object_id, const std::string& link
   planning_scene_interface.applyAttachedCollisionObject(att_coll_object);
 }
 
+geometry_msgs::PoseStamped
+getCollisionObjectSubframePose(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
+                               const std::string& object_id, const std::string& subframe_name)
+{
+  planning_scene_monitor->requestPlanningSceneState();
+  moveit_msgs::CollisionObject collision_obj;
+  {  // Scope LockedPlanningSceneRO
+    planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
+    if (!planning_scene_ro->getCollisionObjectMsg(collision_obj, object_id))
+    {
+      moveit_msgs::AttachedCollisionObject att_collision_obj;
+      if (!planning_scene_ro->getAttachedCollisionObjectMsg(att_collision_obj, object_id))
+      {
+        ROS_ERROR_STREAM("getCollisionObjectSubframePose unable to find collision object id" << object_id);
+        throw collision_object_not_found("getCollisionObjectSubframePose unable to find collision object id"
+                                         << object_id);
+      }
+      collision_obj = att_collision_obj.object;
+    }
+  }  // END Scope LockedPlanningSceneRO
+
+  for (int i = 0; i < collision_obj.subframe_names.size(); i++)
+  {
+    if (collision_obj.subframe_names[i] == subframe_name)
+    {
+      geometry_msgs::PoseStamped pose;
+      pose.header.frame_id = collision_obj.header.frame_id;
+      pose.pose = collision_obj.subframe_poses[i];
+      return pose;
+    }
+  }
+
+  throw subframe_not_found("getCollisionObjectSubframePose, subframe " + subframe_name + " not found");
+}
+
 void moveCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
                          const std::string& object_id, geometry_msgs::PoseStamped desired_pose,
                          const std::string& ref_subframe_name)
@@ -354,6 +387,24 @@ void moveCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planni
 #endif
 }
 
+void removeCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
+                           const std::string& obj_id)
+{
+  moveit_msgs::CollisionObject collision_obj;
+  {  // Scope LockedPlanningSceneRO
+    planning_scene_monitor->requestPlanningSceneState();
+    planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
+    if (!planning_scene_ro->getCollisionObjectMsg(collision_obj, obj_id))
+    {
+      ROS_ERROR_STREAM("removeCollisionObject unable to find collision object id" << obj_id);
+      throw collision_object_not_found("removeCollisionObject unable to find collision object id" + obj_id);
+    }
+  }  // END Scope LockedPlanningSceneRO
+  collision_obj.operation = moveit_msgs::CollisionObject::REMOVE;
+  moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
+  planning_scene_interface.applyCollisionObject(collision_obj);
+}
+
 void removeAllCollisionObjects(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor)
 {
   planning_scene_monitor->requestPlanningSceneState();
@@ -361,12 +412,12 @@ void removeAllCollisionObjects(planning_scene_monitor::PlanningSceneMonitorPtr& 
   // Get Attached collision objects
   std::vector<moveit_msgs::AttachedCollisionObject> att_col_objs;
   {
-  planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
-  planning_scene_ro->getAttachedCollisionObjectMsgs(att_col_objs);
+    planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
+    planning_scene_ro->getAttachedCollisionObjectMsgs(att_col_objs);
   }
 
-  //Detach all
-  for(auto& att_col_obj: att_col_objs)
+  // Detach all
+  for (auto& att_col_obj : att_col_objs)
   {
     att_col_obj.object.operation = moveit_msgs::AttachedCollisionObject::_object_type::REMOVE;
   }
@@ -378,11 +429,11 @@ void removeAllCollisionObjects(planning_scene_monitor::PlanningSceneMonitorPtr& 
   // Get Collision objects
   std::vector<moveit_msgs::CollisionObject> col_objs;
   {
-  planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
-  planning_scene_ro->getCollisionObjectMsgs(col_objs);
+    planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
+    planning_scene_ro->getCollisionObjectMsgs(col_objs);
   }
-  //Remove all
-  for(auto& col_obj: col_objs)
+  // Remove all
+  for (auto& col_obj : col_objs)
   {
     col_obj.operation = moveit_msgs::AttachedCollisionObject::_object_type::REMOVE;
   }
@@ -390,22 +441,32 @@ void removeAllCollisionObjects(planning_scene_monitor::PlanningSceneMonitorPtr& 
     moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
     planning_scene_interface.applyCollisionObjects(col_objs);
   }
-  
+}
+
+geometry_msgs::Pose getPoseFromYAMLNode(const YAML::Node& yaml)
+{
+  geometry_msgs::Pose pose;
+  pose.position.x = yaml["position"].as<std::vector<double>>()[0];
+  pose.position.y = yaml["position"].as<std::vector<double>>()[1];
+  pose.position.z = yaml["position"].as<std::vector<double>>()[2];
+  pose.orientation.w = yaml["orientation"]["scalar"].as<double>();
+  pose.orientation.x = yaml["orientation"]["vector"].as<std::vector<double>>()[0];
+  pose.orientation.y = yaml["orientation"]["vector"].as<std::vector<double>>()[1];
+  pose.orientation.z = yaml["orientation"]["vector"].as<std::vector<double>>()[2];
 }
 
 // Spawn a new collision object such that the object subframe 'ref_subframe_name' is located in 'pose'
 void spawnCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
-                          const std::string& object_id, const std::string& object_type, const std::string& db,
-                          const geometry_msgs::PoseStamped& pose, const std::string& ref_subframe_name)
+                          const SceneObject& obj)
 {
   moveit_msgs::CollisionObject collision_obj;
 
-  collision_obj.header.frame_id = pose.header.frame_id;
-  collision_obj.id = object_id;
-  collision_obj.type.key = object_type;
-  collision_obj.type.db = db;
+  collision_obj.header.frame_id = obj.ref_subframe_pose.header.frame_id;
+  collision_obj.id = obj.id;
+  collision_obj.type.key = obj.type;
+  collision_obj.type.db = obj.db;
 
-  YAML::Node obj_yaml = YAML::LoadFile(db + object_type + ".yaml");
+  YAML::Node obj_yaml = YAML::LoadFile(obj.db + obj.type + ".yaml");
 
   // Geometry
   const YAML::Node& geometry_primitives = obj_yaml["geometry_primitives"];
@@ -417,14 +478,7 @@ void spawnCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& plann
     primitive.type = geometry_primitive["type"].as<int>();
     primitive.dimensions = geometry_primitive["dimensions"].as<std::vector<double>>();
 
-    geometry_msgs::Pose primitive_pose;
-    primitive_pose.position.x = geometry_primitive["position"].as<std::vector<double>>()[0];
-    primitive_pose.position.y = geometry_primitive["position"].as<std::vector<double>>()[1];
-    primitive_pose.position.z = geometry_primitive["position"].as<std::vector<double>>()[2];
-    primitive_pose.orientation.w = geometry_primitive["orientation"]["scalar"].as<double>();
-    primitive_pose.orientation.x = geometry_primitive["orientation"]["vector"].as<std::vector<double>>()[0];
-    primitive_pose.orientation.y = geometry_primitive["orientation"]["vector"].as<std::vector<double>>()[1];
-    primitive_pose.orientation.z = geometry_primitive["orientation"]["vector"].as<std::vector<double>>()[2];
+    geometry_msgs::Pose primitive_pose = getPoseFromYAMLNode(geometry_primitive);
 
     collision_obj.primitives.push_back(primitive);
     collision_obj.primitive_poses.push_back(primitive_pose);
@@ -439,14 +493,7 @@ void spawnCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& plann
     const YAML::Node& subframes = obj_yaml["subframes"];
     for (YAML::const_iterator it = subframes.begin(); it != subframes.end(); ++it)
     {
-      geometry_msgs::Pose subframe_pose;
-      subframe_pose.position.x = it->second["position"].as<std::vector<double>>()[0];
-      subframe_pose.position.y = it->second["position"].as<std::vector<double>>()[1];
-      subframe_pose.position.z = it->second["position"].as<std::vector<double>>()[2];
-      subframe_pose.orientation.w = it->second["orientation"]["scalar"].as<double>();
-      subframe_pose.orientation.x = it->second["orientation"]["vector"].as<std::vector<double>>()[0];
-      subframe_pose.orientation.y = it->second["orientation"]["vector"].as<std::vector<double>>()[1];
-      subframe_pose.orientation.z = it->second["orientation"]["vector"].as<std::vector<double>>()[2];
+      geometry_msgs::Pose subframe_pose = getPoseFromYAMLNode(it->second);
 
       collision_obj.subframe_names.push_back(it->first.as<std::string>());
       collision_obj.subframe_poses.push_back(subframe_pose);
@@ -459,7 +506,67 @@ void spawnCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& plann
   planning_scene_interface.applyCollisionObject(collision_obj);
 
   // Move to the desired location
-  moveCollisionObject(planning_scene_monitor, object_id, pose, ref_subframe_name);
+  moveCollisionObject(planning_scene_monitor, obj.id, obj.ref_subframe_pose, obj.ref_subframe);
+}
+
+void spawnCollisionObjects(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
+                           const std::vector<SceneObject>& objs)
+{
+  for (const auto& obj : objs)
+  {
+    spawnCollisionObject(planning_scene_monitor, obj);
+  }
+}
+
+void changeObjectRefSubframe(SceneObject& obj, const std::string& new_ref_subframe)
+{
+  YAML::Node obj_yaml = YAML::LoadFile(obj.db + obj.type + ".yaml");
+
+  Eigen::Affine3d w_T_i;
+  tf2::fromMsg(obj.ref_subframe_pose.pose, w_T_i);
+
+  Eigen::Affine3d b_T_i;
+  if (obj.ref_subframe == obj_yaml["base_frame_id"].as<std::string>())
+  {
+    b_T_i = Eigen::Affine3d::Identity();
+  }
+  else
+  {
+    if (!obj_yaml["subframes"][obj.ref_subframe])
+    {
+      throw subframe_not_found("changeObjectRefSubframe, subframe " + obj.ref_subframe + " not found in yaml file");
+    }
+    tf2::fromMsg(getPoseFromYAMLNode(obj_yaml["subframes"][obj.ref_subframe]), b_T_i);
+
+    // b_T_i = Eigen::Affine3d(
+    //     Eigen::Translation3d(obj_yaml["subframes"][obj.ref_subframe]["position"].as<std::vector<double>>()[0],
+    //                          obj_yaml["subframes"][obj.ref_subframe]["position"].as<std::vector<double>>()[1],
+    //                          obj_yaml["subframes"][obj.ref_subframe]["position"].as<std::vector<double>>()[2]) *
+    //     Eigen::Quaterniond(
+    //         obj_yaml["subframes"][obj.ref_subframe]["orientation"]["scalar"].as<double>(),
+    //         obj_yaml["subframes"][obj.ref_subframe]["orientation"]["vector"].as<std::vector<double>>()[0],
+    //         obj_yaml["subframes"][obj.ref_subframe]["orientation"]["vector"].as<std::vector<double>>()[1],
+    //         obj_yaml["subframes"][obj.ref_subframe]["orientation"]["vector"].as<std::vector<double>>()[2]));
+  }
+
+  Eigen::Affine3d b_T_f;
+  if (new_ref_subframe == obj_yaml["base_frame_id"].as<std::string>())
+  {
+    b_T_f = Eigen::Affine3d::Identity();
+  }
+  else
+  {
+    if (!obj_yaml["subframes"][new_ref_subframe])
+    {
+      throw subframe_not_found("changeObjectRefSubframe, subframe " + new_ref_subframe + " not found in yaml file");
+    }
+    tf2::fromMsg(getPoseFromYAMLNode(obj_yaml["subframes"][new_ref_subframe]), b_T_f);
+  }
+
+  Eigen::Affine3d w_T_f = w_T_i * b_T_i.inverse() * b_T_f;
+
+  obj.ref_subframe_pose.pose = tf2::toMsg(w_T_f);
+  obj.ref_subframe = new_ref_subframe;
 }
 
 }  // namespace sun

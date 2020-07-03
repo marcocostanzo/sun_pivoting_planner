@@ -170,6 +170,7 @@ public:
 	  moveCollisionObject(planning_scene_monitor_, goal->object_id, pose_move, grasp_frames_ids[i]);
 	  // zeroPivotingLink(); //TODO
 	  attachCollisionObject(goal->object_id, goal->grasp_link);
+	  // simulateGripperClose(); //TODO
 
 	  if (goal->pre_place_endeffector != "")
 	  {

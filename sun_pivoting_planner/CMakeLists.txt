@@ -124,6 +124,7 @@ ${catkin_INCLUDE_DIRS}
 ## Declare a C++ library
 add_library(${PROJECT_NAME}_utility
   src/${PROJECT_NAME}/utility.cpp
+  src/${PROJECT_NAME}/SceneObject.cpp
 )
 target_link_libraries(${PROJECT_NAME}_utility
   ${catkin_LIBRARIES}

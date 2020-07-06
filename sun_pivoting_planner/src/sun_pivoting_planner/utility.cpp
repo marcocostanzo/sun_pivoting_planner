@@ -105,118 +105,75 @@ void add_joint_configuration_constraints(const Joint_Conf_Constraint& joint_conf
   }
 }
 
+moveit_msgs::CollisionObject
+getMoveitCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
+                         const std::string& object_id, const std::string& error_append)
+{
+  planning_scene_monitor->requestPlanningSceneState();
+  moveit_msgs::CollisionObject collision_obj;
+  {  // Scope LockedPlanningSceneRO
+    planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
+    if (!planning_scene_ro->getCollisionObjectMsg(collision_obj, object_id))
+    {
+      ROS_ERROR_STREAM("unable to find collision object id " << object_id << error_append);
+      throw collision_object_not_found("unable to find collision object id " + object_id + error_append);
+    }
+  }  // END Scope LockedPlanningSceneRO
+  return collision_obj;
+}
+
+moveit_msgs::AttachedCollisionObject
+getMoveitAttachedCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
+                                 const std::string& object_id, const std::string& error_append)
+{
+  planning_scene_monitor->requestPlanningSceneState();
+  moveit_msgs::AttachedCollisionObject att_collision_obj;
+  {  // Scope LockedPlanningSceneRO
+    planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
+    if (!planning_scene_ro->getAttachedCollisionObjectMsg(att_collision_obj, object_id))
+    {
+      ROS_ERROR_STREAM("unable to find attached collision object id " << object_id << error_append);
+      throw attached_collision_object_not_found("unable to find attached collision object id " + object_id +
+                                                error_append);
+    }
+  }  // END Scope LockedPlanningSceneRO
+  return att_collision_obj;
+}
+
+moveit_msgs::CollisionObject
+getMoveitPossiblyAttachedCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
+                                         const std::string& object_id, const std::string& error_append)
+{
+  try
+  {
+    return getMoveitCollisionObject(planning_scene_monitor, object_id, error_append);
+  }
+  catch (const collision_object_not_found& e)
+  {
+    moveit_msgs::AttachedCollisionObject att_coll_obj =
+        getMoveitAttachedCollisionObject(planning_scene_monitor, object_id, error_append);
+    return att_coll_obj.object;
+  }
+}
+
 // Return the link to which the object was attached
 std::string detachCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
                                   const std::string& attached_object_id, const std::string& robot_description_id)
 {
-// DBG
-#ifdef DBG_BTN
-  char ans;
-  std::cout << "detachCollisionObject init [button]" << std::endl;
-  std::cin >> ans;
-  std::cout << "detachCollisionObject print state: [button]" << std::endl;
-  std::cin >> ans;
-  print_collision_obj_state(planning_scene_monitor);
-  std::cout << "detachCollisionObject state printed [button]" << std::endl;
-  std::cin >> ans;
-#endif
-
-// DBG
-#ifdef DBG_BTN
-  std::cout << "detachCollisionObject requestPlanningSceneState [button]" << std::endl;
-  std::cin >> ans;
-#endif
-
-  planning_scene_monitor->requestPlanningSceneState();
-
-// DBG
-#ifdef DBG_BTN
-  std::cout << "detachCollisionObject requestPlanningSceneState DONE [button]" << std::endl;
-  std::cin >> ans;
-#endif
-
-  moveit_msgs::AttachedCollisionObject attached_obj;
-  std::string link_was_attached;
-
-  {  // Scope LockedPlanningSceneRO
-    planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
-
-// DBG
-#ifdef DBG_BTN
-    std::cout << "detachCollisionObject request AttachedCollisionObject [button]" << std::endl;
-    std::cin >> ans;
-#endif
-
-    if (!planning_scene_ro->getAttachedCollisionObjectMsg(attached_obj, attached_object_id))
-    {
-      ROS_ERROR("detachCollisionObject unable to find attached object id");
-      throw attached_collision_object_not_found("detachCollisionObject unable to find attached object id");
-    }
-  }  // END Scope LockedPlanningSceneRO
-
-  link_was_attached = attached_obj.link_name;
-
-// DBG
-#ifdef DBG_BTN
-  std::cout << "detachCollisionObject link_was_attached: " << link_was_attached << std::endl;
-  std::cout << "detachCollisionObject requested AttachedCollisionObject [button]" << std::endl;
-  std::cin >> ans;
-#endif
+  moveit_msgs::AttachedCollisionObject attached_obj =
+      getMoveitAttachedCollisionObject(planning_scene_monitor, attached_object_id, " - in detachCollisionObject");
+  std::string link_was_attached = attached_obj.link_name;
 
   moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
-
-// DBG
-#ifdef DBG_BTN
-  std::cout << "detachCollisionObject removing from attached [button]" << std::endl;
-  std::cin >> ans;
-#endif
-
   // Remove from attached
   attached_obj.object.operation = moveit_msgs::AttachedCollisionObject::_object_type::REMOVE;
   planning_scene_interface.applyAttachedCollisionObject(attached_obj);
 
-// DBG
-#ifdef DBG_BTN
-  print_collision_obj_state(planning_scene_monitor);
-  std::cout << "detachCollisionObject removed from attached [button]" << std::endl;
-  std::cin >> ans;
-
-  // DBG
-  std::cout << "detachCollisionObject getting Collision obj [button]" << std::endl;
-  std::cin >> ans;
-
-  // DBG
-  std::cout << "detachCollisionObject requestPlanningSceneState [button]" << std::endl;
-  std::cin >> ans;
-#endif
-
   planning_scene_monitor->requestPlanningSceneState();
 
-// DBG
-#ifdef DBG_BTN
-  std::cout << "detachCollisionObject requestPlanningSceneState done [button]" << std::endl;
-  std::cin >> ans;
-#endif
-
-  moveit_msgs::CollisionObject collision_obj;
-  {  // Scope LockedPlanningSceneRO
-    planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
-    if (!planning_scene_ro->getCollisionObjectMsg(collision_obj, attached_object_id))
-    {
-      ROS_ERROR("detachCollisionObject unable to find collision object id");
-      throw collision_object_not_found("detachCollisionObject unable to find collision object id just detached");
-    }
-  }  // END Scope LockedPlanningSceneRO
-
-// DBG
-#ifdef DBG_BTN
-  std::cout << "detachCollisionObject collision obj get done [button]" << std::endl;
-  std::cin >> ans;
-
-  // DBG
-  std::cout << "detachCollisionObject transforming subframes [button]" << std::endl;
-  std::cin >> ans;
-#endif
+  moveit_msgs::CollisionObject collision_obj = getMoveitCollisionObject(planning_scene_monitor, attached_object_id,
+                                                                        " - in detachCollisionObject - unable to find "
+                                                                        "collision object id just detached");
 
   moveit_msgs::CollisionObject new_obj = attached_obj.object;
   new_obj.primitive_poses = collision_obj.primitive_poses;
@@ -236,25 +193,8 @@ std::string detachCollisionObject(planning_scene_monitor::PlanningSceneMonitorPt
   // Change frame id!!
   new_obj.header.frame_id = collision_obj.header.frame_id;
 
-// DBG
-#ifdef DBG_BTN
-  std::cout << "detachCollisionObject transform done [button]" << std::endl;
-  std::cin >> ans;
-
-  // DBG
-  std::cout << "detachCollisionObject applying collision obj [button]" << std::endl;
-  std::cin >> ans;
-#endif
-
   new_obj.operation = moveit_msgs::AttachedCollisionObject::_object_type::ADD;
   planning_scene_interface.applyCollisionObject(new_obj);
-
-// DBG
-#ifdef DBG_BTN
-  print_collision_obj_state(planning_scene_monitor);
-  std::cout << "detachCollisionObject collision obj apply done [button]" << std::endl;
-  std::cin >> ans;
-#endif
 
   return link_was_attached;
 }
@@ -269,27 +209,9 @@ void attachCollisionObject(const std::string& object_id, const std::string& link
   planning_scene_interface.applyAttachedCollisionObject(att_coll_object);
 }
 
-geometry_msgs::PoseStamped
-getCollisionObjectSubframePose(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
-                               const std::string& object_id, const std::string& subframe_name)
+geometry_msgs::PoseStamped getCollisionObjectSubframePose(const moveit_msgs::CollisionObject& collision_obj,
+                                                          const std::string& subframe_name)
 {
-  planning_scene_monitor->requestPlanningSceneState();
-  moveit_msgs::CollisionObject collision_obj;
-  {  // Scope LockedPlanningSceneRO
-    planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
-    if (!planning_scene_ro->getCollisionObjectMsg(collision_obj, object_id))
-    {
-      moveit_msgs::AttachedCollisionObject att_collision_obj;
-      if (!planning_scene_ro->getAttachedCollisionObjectMsg(att_collision_obj, object_id))
-      {
-        ROS_ERROR_STREAM("getCollisionObjectSubframePose unable to find collision object id" << object_id);
-        throw collision_object_not_found("getCollisionObjectSubframePose unable to find collision object id"
-                                         << object_id);
-      }
-      collision_obj = att_collision_obj.object;
-    }
-  }  // END Scope LockedPlanningSceneRO
-
   for (int i = 0; i < collision_obj.subframe_names.size(); i++)
   {
     if (collision_obj.subframe_names[i] == subframe_name)
@@ -304,44 +226,25 @@ getCollisionObjectSubframePose(planning_scene_monitor::PlanningSceneMonitorPtr& 
   throw subframe_not_found("getCollisionObjectSubframePose, subframe " + subframe_name + " not found");
 }
 
+geometry_msgs::PoseStamped
+getCollisionObjectSubframePose(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
+                               const std::string& object_id, const std::string& subframe_name)
+{
+  moveit_msgs::CollisionObject collision_obj = getMoveitPossiblyAttachedCollisionObject(
+      planning_scene_monitor, object_id, " - in getCollisionObjectSubframePose");
+
+  return getCollisionObjectSubframePose(collision_obj, subframe_name);
+}
+
 void moveCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
                          const std::string& object_id, geometry_msgs::PoseStamped desired_pose,
                          const std::string& ref_subframe_name)
 {
-// DBG
-#ifdef DBG_BTN
-  std::cout << "moveCollisionObject Initial state" << std::endl;
-  print_collision_obj_state(planning_scene_monitor);
-#endif
-
-  planning_scene_monitor->requestPlanningSceneState();
-
-  moveit_msgs::CollisionObject collision_obj;
-  {  // Scope LockedPlanningSceneRO
-    planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
-    if (!planning_scene_ro->getCollisionObjectMsg(collision_obj, object_id))
-    {
-      ROS_ERROR("moveCollisionObject unable to find collision object id");
-      throw collision_object_not_found("moveCollisionObject unable to find collision object id");
-    }
-  }  // END Scope LockedPlanningSceneRO
+  moveit_msgs::CollisionObject collision_obj =
+      getMoveitCollisionObject(planning_scene_monitor, object_id, " - in moveCollisionObject");
 
   // Find the subframe
-  geometry_msgs::PoseStamped ref_subframe;
-  // for(const std::string& subframe_name : collision_obj.subframe_names)
-  for (int i = 0; i < collision_obj.subframe_names.size(); i++)
-  {
-    if (collision_obj.subframe_names[i] == ref_subframe_name)
-    {
-      ref_subframe.header = collision_obj.header;
-      ref_subframe.pose = collision_obj.subframe_poses[i];
-      break;
-    }
-  }
-  if (ref_subframe.header.frame_id == "")
-  {
-    throw subframe_not_found("moveCollisionObject unable to find the subframe" + ref_subframe_name);
-  }
+  geometry_msgs::PoseStamped ref_subframe = getCollisionObjectSubframePose(collision_obj, ref_subframe_name);
 
   // represent the desired pose in the object frame id
   desired_pose.header.stamp = ros::Time::now();
@@ -379,27 +282,13 @@ void moveCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planni
 
   moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
   planning_scene_interface.applyCollisionObject(collision_obj);
-
-// DBG
-#ifdef DBG_BTN
-  std::cout << "moveCollisionObject Final" << std::endl;
-  print_collision_obj_state(planning_scene_monitor);
-#endif
 }
 
 void removeCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
                            const std::string& obj_id)
 {
-  moveit_msgs::CollisionObject collision_obj;
-  {  // Scope LockedPlanningSceneRO
-    planning_scene_monitor->requestPlanningSceneState();
-    planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
-    if (!planning_scene_ro->getCollisionObjectMsg(collision_obj, obj_id))
-    {
-      ROS_ERROR_STREAM("removeCollisionObject unable to find collision object id" << obj_id);
-      throw collision_object_not_found("removeCollisionObject unable to find collision object id" + obj_id);
-    }
-  }  // END Scope LockedPlanningSceneRO
+  moveit_msgs::CollisionObject collision_obj =
+      getMoveitCollisionObject(planning_scene_monitor, obj_id, " - in removeCollisionObject");
   collision_obj.operation = moveit_msgs::CollisionObject::REMOVE;
   moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
   planning_scene_interface.applyCollisionObject(collision_obj);
@@ -407,9 +296,8 @@ void removeCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& plan
 
 void removeAllCollisionObjects(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor)
 {
-  planning_scene_monitor->requestPlanningSceneState();
-
   // Get Attached collision objects
+  planning_scene_monitor->requestPlanningSceneState();
   std::vector<moveit_msgs::AttachedCollisionObject> att_col_objs;
   {
     planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
@@ -427,6 +315,7 @@ void removeAllCollisionObjects(planning_scene_monitor::PlanningSceneMonitorPtr& 
   }
 
   // Get Collision objects
+  planning_scene_monitor->requestPlanningSceneState();
   std::vector<moveit_msgs::CollisionObject> col_objs;
   {
     planning_scene_monitor::LockedPlanningSceneRO planning_scene_ro(planning_scene_monitor);
@@ -441,132 +330,6 @@ void removeAllCollisionObjects(planning_scene_monitor::PlanningSceneMonitorPtr& 
     moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
     planning_scene_interface.applyCollisionObjects(col_objs);
   }
-}
-
-geometry_msgs::Pose getPoseFromYAMLNode(const YAML::Node& yaml)
-{
-  geometry_msgs::Pose pose;
-  pose.position.x = yaml["position"].as<std::vector<double>>()[0];
-  pose.position.y = yaml["position"].as<std::vector<double>>()[1];
-  pose.position.z = yaml["position"].as<std::vector<double>>()[2];
-  pose.orientation.w = yaml["orientation"]["scalar"].as<double>();
-  pose.orientation.x = yaml["orientation"]["vector"].as<std::vector<double>>()[0];
-  pose.orientation.y = yaml["orientation"]["vector"].as<std::vector<double>>()[1];
-  pose.orientation.z = yaml["orientation"]["vector"].as<std::vector<double>>()[2];
-}
-
-// Spawn a new collision object such that the object subframe 'ref_subframe_name' is located in 'pose'
-void spawnCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
-                          const SceneObject& obj)
-{
-  moveit_msgs::CollisionObject collision_obj;
-
-  collision_obj.header.frame_id = obj.ref_subframe_pose.header.frame_id;
-  collision_obj.id = obj.id;
-  collision_obj.type.key = obj.type;
-  collision_obj.type.db = obj.db;
-
-  YAML::Node obj_yaml = YAML::LoadFile(obj.db + obj.type + ".yaml");
-
-  // Geometry
-  const YAML::Node& geometry_primitives = obj_yaml["geometry_primitives"];
-  for (YAML::const_iterator it = geometry_primitives.begin(); it != geometry_primitives.end(); ++it)
-  {
-    const YAML::Node& geometry_primitive = *it;
-
-    shape_msgs::SolidPrimitive primitive;
-    primitive.type = geometry_primitive["type"].as<int>();
-    primitive.dimensions = geometry_primitive["dimensions"].as<std::vector<double>>();
-
-    geometry_msgs::Pose primitive_pose = getPoseFromYAMLNode(geometry_primitive);
-
-    collision_obj.primitives.push_back(primitive);
-    collision_obj.primitive_poses.push_back(primitive_pose);
-  }
-
-  // Subframes
-  collision_obj.subframe_names.push_back(obj_yaml["base_frame_id"].as<std::string>());
-  collision_obj.subframe_poses.resize(1);
-  collision_obj.subframe_poses[0].orientation.w = 1.0;
-  if (obj_yaml["subframes"])
-  {
-    const YAML::Node& subframes = obj_yaml["subframes"];
-    for (YAML::const_iterator it = subframes.begin(); it != subframes.end(); ++it)
-    {
-      geometry_msgs::Pose subframe_pose = getPoseFromYAMLNode(it->second);
-
-      collision_obj.subframe_names.push_back(it->first.as<std::string>());
-      collision_obj.subframe_poses.push_back(subframe_pose);
-    }
-  }
-
-  // Add to the scene
-  collision_obj.operation = moveit_msgs::CollisionObject::ADD;
-  moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
-  planning_scene_interface.applyCollisionObject(collision_obj);
-
-  // Move to the desired location
-  moveCollisionObject(planning_scene_monitor, obj.id, obj.ref_subframe_pose, obj.ref_subframe);
-}
-
-void spawnCollisionObjects(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
-                           const std::vector<SceneObject>& objs)
-{
-  for (const auto& obj : objs)
-  {
-    spawnCollisionObject(planning_scene_monitor, obj);
-  }
-}
-
-void changeObjectRefSubframe(SceneObject& obj, const std::string& new_ref_subframe)
-{
-  YAML::Node obj_yaml = YAML::LoadFile(obj.db + obj.type + ".yaml");
-
-  Eigen::Affine3d w_T_i;
-  tf2::fromMsg(obj.ref_subframe_pose.pose, w_T_i);
-
-  Eigen::Affine3d b_T_i;
-  if (obj.ref_subframe == obj_yaml["base_frame_id"].as<std::string>())
-  {
-    b_T_i = Eigen::Affine3d::Identity();
-  }
-  else
-  {
-    if (!obj_yaml["subframes"][obj.ref_subframe])
-    {
-      throw subframe_not_found("changeObjectRefSubframe, subframe " + obj.ref_subframe + " not found in yaml file");
-    }
-    tf2::fromMsg(getPoseFromYAMLNode(obj_yaml["subframes"][obj.ref_subframe]), b_T_i);
-
-    // b_T_i = Eigen::Affine3d(
-    //     Eigen::Translation3d(obj_yaml["subframes"][obj.ref_subframe]["position"].as<std::vector<double>>()[0],
-    //                          obj_yaml["subframes"][obj.ref_subframe]["position"].as<std::vector<double>>()[1],
-    //                          obj_yaml["subframes"][obj.ref_subframe]["position"].as<std::vector<double>>()[2]) *
-    //     Eigen::Quaterniond(
-    //         obj_yaml["subframes"][obj.ref_subframe]["orientation"]["scalar"].as<double>(),
-    //         obj_yaml["subframes"][obj.ref_subframe]["orientation"]["vector"].as<std::vector<double>>()[0],
-    //         obj_yaml["subframes"][obj.ref_subframe]["orientation"]["vector"].as<std::vector<double>>()[1],
-    //         obj_yaml["subframes"][obj.ref_subframe]["orientation"]["vector"].as<std::vector<double>>()[2]));
-  }
-
-  Eigen::Affine3d b_T_f;
-  if (new_ref_subframe == obj_yaml["base_frame_id"].as<std::string>())
-  {
-    b_T_f = Eigen::Affine3d::Identity();
-  }
-  else
-  {
-    if (!obj_yaml["subframes"][new_ref_subframe])
-    {
-      throw subframe_not_found("changeObjectRefSubframe, subframe " + new_ref_subframe + " not found in yaml file");
-    }
-    tf2::fromMsg(getPoseFromYAMLNode(obj_yaml["subframes"][new_ref_subframe]), b_T_f);
-  }
-
-  Eigen::Affine3d w_T_f = w_T_i * b_T_i.inverse() * b_T_f;
-
-  obj.ref_subframe_pose.pose = tf2::toMsg(w_T_f);
-  obj.ref_subframe = new_ref_subframe;
 }
 
 }  // namespace sun

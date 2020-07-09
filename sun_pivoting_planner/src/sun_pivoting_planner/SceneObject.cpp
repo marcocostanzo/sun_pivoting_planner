@@ -155,16 +155,30 @@ geometry_msgs::Pose SceneObject::getSubframeRelativePose(const std::string& subf
   return getPoseFromYAMLNode(obj_yaml["subframes"][subframe_name]);
 }
 
+geometry_msgs::Point getPositionFromYAMLNode(const YAML::Node& yaml)
+{
+  geometry_msgs::Point position;
+  position.x = yaml["position"].as<std::vector<double>>()[0];
+  position.y = yaml["position"].as<std::vector<double>>()[1];
+  position.z = yaml["position"].as<std::vector<double>>()[2];
+  return position;
+}
+
+geometry_msgs::Quaternion getOrientationFromYAMLNode(const YAML::Node& yaml)
+{
+  geometry_msgs::Quaternion orientation;
+  orientation.w = yaml["orientation"]["scalar"].as<double>();
+  orientation.x = yaml["orientation"]["vector"].as<std::vector<double>>()[0];
+  orientation.y = yaml["orientation"]["vector"].as<std::vector<double>>()[1];
+  orientation.z = yaml["orientation"]["vector"].as<std::vector<double>>()[2];
+  return orientation;
+}
+
 geometry_msgs::Pose getPoseFromYAMLNode(const YAML::Node& yaml)
 {
   geometry_msgs::Pose pose;
-  pose.position.x = yaml["position"].as<std::vector<double>>()[0];
-  pose.position.y = yaml["position"].as<std::vector<double>>()[1];
-  pose.position.z = yaml["position"].as<std::vector<double>>()[2];
-  pose.orientation.w = yaml["orientation"]["scalar"].as<double>();
-  pose.orientation.x = yaml["orientation"]["vector"].as<std::vector<double>>()[0];
-  pose.orientation.y = yaml["orientation"]["vector"].as<std::vector<double>>()[1];
-  pose.orientation.z = yaml["orientation"]["vector"].as<std::vector<double>>()[2];
+  pose.position = getPositionFromYAMLNode(yaml);
+  pose.orientation = getOrientationFromYAMLNode(yaml);
   return pose;
 }
 

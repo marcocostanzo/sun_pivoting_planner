@@ -59,6 +59,10 @@ public:
   geometry_msgs::Pose getSubframeRelativePose(const std::string& subframe_name);
 };
 
+geometry_msgs::Point getPositionFromYAMLNode(const YAML::Node& yaml);
+
+geometry_msgs::Quaternion getOrientationFromYAMLNode(const YAML::Node& yaml);
+
 geometry_msgs::Pose getPoseFromYAMLNode(const YAML::Node& yaml);
 
 void spawnSceneObjects(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,

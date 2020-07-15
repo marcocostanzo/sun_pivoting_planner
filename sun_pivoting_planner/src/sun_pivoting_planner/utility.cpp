@@ -156,6 +156,13 @@ getMoveitPossiblyAttachedCollisionObject(planning_scene_monitor::PlanningSceneMo
   }
 }
 
+void applyMoveitCollisionObject(moveit_msgs::CollisionObject obj)
+{
+  obj.operation = moveit_msgs::CollisionObject::ADD;
+  moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
+  planning_scene_interface.applyCollisionObject(obj);
+}
+
 // Return the link to which the object was attached
 std::string detachCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
                                   const std::string& attached_object_id, const std::string& robot_description_id)

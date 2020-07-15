@@ -22,6 +22,7 @@ void SceneObject::fromPlanningScene(planning_scene_monitor::PlanningSceneMonitor
   db = collision_obj.type.db;
   id = collision_obj.id;
   type = collision_obj.type.key;
+  db = collision_obj.type.db;
   pose = getCollisionObjectSubframePose(planning_scene_monitor, id, getBaseFrameID());
 }
 

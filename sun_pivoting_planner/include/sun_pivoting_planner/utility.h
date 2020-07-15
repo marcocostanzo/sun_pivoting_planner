@@ -45,6 +45,8 @@ moveit_msgs::CollisionObject
 getMoveitPossiblyAttachedCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
                                          const std::string& object_id, const std::string& error_append = "");
 
+void applyMoveitCollisionObject(moveit_msgs::CollisionObject obj);
+
 // Return the link to which the object was attached
 std::string detachCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
                                   const std::string& attached_object_id, const std::string& robot_description_id);

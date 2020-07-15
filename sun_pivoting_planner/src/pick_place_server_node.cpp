@@ -67,8 +67,7 @@ public:
 
   void executePlanning(const sun_pivoting_planner_msgs::PickPlacePlanGoalConstPtr& goal)
   {
-
-	// Get the collision object initial state  
+	// Get the collision object initial state
 	moveit_msgs::CollisionObject collision_obj_initial_state;
 	{  // Scope LockedPlanningSceneRO
 	  planning_scene_monitor_->requestPlanningSceneState();
@@ -108,10 +107,13 @@ public:
 	  moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
 	  planning_scene_interface.applyCollisionObject(collision_obj_initial_state);
 
-	  ROS_INFO_STREAM("Planning using grasp #" << i+1 << "/" << grasp_frames_ids.size());
+	  ROS_INFO_STREAM("Planning using grasp #" << i + 1 << "/" << grasp_frames_ids.size());
 	  ROS_INFO_STREAM(grasp_frames_ids[i] << " " << pre_grasp_frames_ids[i]);
 
 	  sun_pivoting_planner_msgs::PickPlacePlanResult result;
+
+	  result.grasp_subframe = grasp_frames_ids[i];
+	  result.pre_grasp_subframe = pre_grasp_frames_ids[i];
 
 	  // Generic Goal
 	  sun_pivoting_planner_msgs::PivotingPlanGoal plannerGoal;
@@ -136,7 +138,7 @@ public:
 
 	  if (!(ac_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED))
 	  {
-		ROS_WARN_STREAM("Plan #" << i+1 << "/" << grasp_frames_ids.size() << " PreGrasp Fail");
+		ROS_WARN_STREAM("Plan #" << i + 1 << "/" << grasp_frames_ids.size() << " PreGrasp Fail");
 		continue;
 	  }
 
@@ -157,7 +159,7 @@ public:
 
 	  if (!(ac_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED))
 	  {
-		ROS_WARN_STREAM("Plan #" << i+1 << "/" << grasp_frames_ids.size() << " Grasp Fail");
+		ROS_WARN_STREAM("Plan #" << i + 1 << "/" << grasp_frames_ids.size() << " Grasp Fail");
 		continue;
 	  }
 
@@ -187,13 +189,12 @@ public:
 		if (!(ac_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED))
 		{
 		  detachCollisionObject(planning_scene_monitor_, goal->object_id, "robot_description");
-		  ROS_WARN_STREAM("Plan #" << i+1 << "/" << grasp_frames_ids.size() << " PrePlace Fail");
+		  ROS_WARN_STREAM("Plan #" << i + 1 << "/" << grasp_frames_ids.size() << " PrePlace Fail");
 		  continue;
 		}
 
 		result.pre_place_traj = ac_.getResult()->planned_trajectories;
 		result.pre_place_pivoting_mode = ac_.getResult()->pivoting_mode;
-
 	  }
 	  else
 	  {
@@ -221,23 +222,28 @@ public:
 	  if (!(ac_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED))
 	  {
 		detachCollisionObject(planning_scene_monitor_, goal->object_id, "robot_description");
-		ROS_WARN_STREAM("Plan #" << i+1 << "/" << grasp_frames_ids.size() << " Place Fail");
+		ROS_WARN_STREAM("Plan #" << i + 1 << "/" << grasp_frames_ids.size() << " Place Fail");
 		continue;
 	  }
 
 	  result.place_traj = ac_.getResult()->planned_trajectories;
 	  result.place_pivoting_mode = ac_.getResult()->pivoting_mode;
 
-	  ROS_INFO_STREAM("Trajectory found at #" << i+1 << "/" << grasp_frames_ids.size());
+	  ROS_INFO_STREAM("Trajectory found at #" << i + 1 << "/" << grasp_frames_ids.size());
 
 	  detachCollisionObject(planning_scene_monitor_, goal->object_id, "robot_description");
+
+	  // Restore collision obj type (FIX)
+	  moveit_msgs::CollisionObject _obj_ = getMoveitCollisionObject(planning_scene_monitor_, goal->object_id);
+	  _obj_.type = collision_obj_initial_state.type;
+	  applyMoveitCollisionObject(_obj_);
+
 	  as_.setSucceeded(result);
 	  return;
 	}
 
 	ROS_ERROR("Unable to find a pick-place solution");
-	moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
-	planning_scene_interface.applyCollisionObject(collision_obj_initial_state);
+	applyMoveitCollisionObject(collision_obj_initial_state);
 
 	as_.setAborted();
   }

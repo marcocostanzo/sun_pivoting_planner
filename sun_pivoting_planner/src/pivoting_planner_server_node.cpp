@@ -49,7 +49,7 @@ protected:
   double plan_time = 2.0;
   int num_planning_attempts = 4;
   std::string plannerID = "PRMstar";
-//   std::string plannerID = "RRTstar";
+  //   std::string plannerID = "RRTstar";
 
 public:
   PivotingPlannerActionServer(const std::string& name, const ros::NodeHandle& nh = ros::NodeHandle())
@@ -468,10 +468,10 @@ public:
 	moveit::planning_interface::MoveGroupInterface move_group_pivoting(goal->group_arm_pivoting_name);
 
 	simulate_gravity_pivoting_not_attached(goal->attached_object_id + "/" + goal->cog_subframe,
-											 move_group_pivoting.getJointNames().back(),
-											 move_group_pivoting.getCurrentJointValues().back(),
-											 goal->attached_object_id, move_group_pivoting.getLinkNames().back());
-	
+										   move_group_pivoting.getJointNames().back(),
+										   move_group_pivoting.getCurrentJointValues().back(), goal->attached_object_id,
+										   move_group_pivoting.getLinkNames().back());
+
 	ROS_INFO("Simple Pivoting");
 	if (plan(move_group_arm, goal->end_effector_frame_id, goal->target_pose, goal->path_constraints, planned_traj,
 			 true))

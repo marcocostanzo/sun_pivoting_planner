@@ -55,6 +55,13 @@ public:
   // planning scene
   void setPose(const geometry_msgs::PoseStamped& new_pose, const std::string& subframe_name);
 
+  //! get Affine transform of subframe target_subframe w.r.t. source_subframe
+  Eigen::Affine3d getRelativeSubframeAffine3d(const std::string& source_subframe, const std::string& target_subframe);
+
+  geometry_msgs::PoseStamped getSubframePoseFronKnownSubframe(const std::string& subframe_id,
+                                                              const std::string& known_subframe_id,
+                                                              const geometry_msgs::PoseStamped& known_subframe_pose);
+
   //! Get the subframe pose relative to the base_frame_id
   geometry_msgs::Pose getSubframeRelativePose(const std::string& subframe_name);
 };

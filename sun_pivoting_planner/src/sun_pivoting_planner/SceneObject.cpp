@@ -156,6 +156,40 @@ geometry_msgs::Pose SceneObject::getSubframeRelativePose(const std::string& subf
   return getPoseFromYAMLNode(obj_yaml["subframes"][subframe_name]);
 }
 
+Eigen::Affine3d SceneObject::getRelativeSubframeAffine3d(const std::string& source_subframe,
+                                                         const std::string& target_subframe)
+{
+  geometry_msgs::Pose base_pose_source = getSubframeRelativePose(source_subframe);
+  geometry_msgs::Pose base_pose_target = getSubframeRelativePose(target_subframe);
+
+  Eigen::Affine3d base_T_source;
+  tf2::fromMsg(base_pose_source, base_T_source);
+  Eigen::Affine3d base_T_target;
+  tf2::fromMsg(base_pose_target, base_T_target);
+
+  Eigen::Affine3d source_T_target = base_T_source.inverse() * base_T_target;
+
+  return source_T_target;
+}
+
+geometry_msgs::PoseStamped
+SceneObject::getSubframePoseFronKnownSubframe(const std::string& subframe_id, const std::string& known_subframe_id,
+                                              const geometry_msgs::PoseStamped& known_subframe_pose)
+{
+  Eigen::Affine3d known_T_target = getRelativeSubframeAffine3d(known_subframe_id, subframe_id);
+  Eigen::Affine3d w_T_known;
+  tf2::fromMsg(known_subframe_pose.pose, w_T_known);
+
+  Eigen::Affine3d w_T_target = w_T_known * known_T_target;
+
+  geometry_msgs::PoseStamped target_pose;
+  target_pose.pose = tf2::toMsg(w_T_target);
+
+  target_pose.header = known_subframe_pose.header;
+
+  return target_pose;
+}
+
 geometry_msgs::Point getPositionFromYAMLNode(const YAML::Node& yaml)
 {
   geometry_msgs::Point position;

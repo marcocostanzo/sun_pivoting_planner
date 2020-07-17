@@ -478,7 +478,7 @@ public:
 	{
 	  set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);
 	  sun_pivoting_planner_msgs::PivotingPlanResult res;
-	  res.planned_trajectories.push_back(trajectory_msgs::JointTrajectory());
+	  res.planned_trajectories.push_back(trajectory_msgs::JointTrajectory()); //empty traj = no move
 	  res.pivoting_mode.push_back(true);
 	  res.planned_trajectories.push_back(planned_traj);
 	  res.pivoting_mode.push_back(false);
@@ -686,7 +686,7 @@ public:
 
 	ROS_INFO("Pivoting plan END!");
 
-	as_.setSucceeded();
+	as_.setSucceeded(res);
   }
 };
 

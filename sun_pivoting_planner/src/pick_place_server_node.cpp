@@ -163,6 +163,8 @@ public:
 		continue;
 	  }
 
+	  result.grasp_traj = ac_.getResult()->planned_trajectories[0];
+
 	  //* Attach the object *//
 	  ROS_INFO_STREAM("Attach");
 	  // First teleport the object in the fingers
@@ -170,16 +172,43 @@ public:
 	  pose_move.header.frame_id = goal->grasp_link;
 	  pose_move.pose.orientation.w = 1.0;
 	  moveCollisionObject(planning_scene_monitor_, goal->object_id, pose_move, grasp_frames_ids[i]);
-	  // zeroPivotingLink(); //TODO
+	  zeroPivotingLink();
 	  attachCollisionObject(goal->object_id, goal->grasp_link);
-	  // simulateGripperClose(); //TODO
+	  simulateGripperClose();
+
+	  //* Post Grasp *//
+	  if (goal->post_grasp_endeffector != "")
+	  {
+		//* Post Grasp *//
+		ROS_INFO_STREAM("Post Grasp");
+		plannerGoal.start_config = ac_.getResult()->planned_trajectories.back().points.back().positions;
+		plannerGoal.start_config_joint_names = ac_.getResult()->planned_trajectories.back().joint_names;
+		plannerGoal.target_pose = goal->post_grasp_pose;
+		plannerGoal.end_effector_frame_id = goal->post_grasp_endeffector;
+		plannerGoal.activate_pivoting = false;
+
+		ac_.sendGoalAndWait(plannerGoal);
+
+		if (!(ac_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED))
+		{
+		  detachCollisionObject(planning_scene_monitor_, goal->object_id, "robot_description");
+		  ROS_WARN_STREAM("Plan #" << i + 1 << "/" << grasp_frames_ids.size() << " PostGrasp Fail");
+		  continue;
+		}
+
+		result.post_grasp_traj = ac_.getResult()->planned_trajectories[0];
+	  }
+	  else
+	  {
+		ROS_WARN("PostGlace not present in query, The planner will skip the post_grasp");
+	  }
 
 	  if (goal->pre_place_endeffector != "")
 	  {
 		//* Pre Place *//
 		ROS_INFO_STREAM("Pre Place");
-		plannerGoal.start_config = result.pre_grasp_traj.points.back().positions;
-		plannerGoal.start_config_joint_names = result.pre_grasp_traj.joint_names;
+		plannerGoal.start_config = ac_.getResult()->planned_trajectories.back().points.back().positions;
+		plannerGoal.start_config_joint_names = ac_.getResult()->planned_trajectories.back().joint_names;
 		plannerGoal.target_pose = goal->pre_place_pose;
 		plannerGoal.end_effector_frame_id = goal->pre_place_endeffector;
 		plannerGoal.activate_pivoting = goal->activate_pivoting;
@@ -203,16 +232,8 @@ public:
 
 	  //* Place *//
 	  ROS_INFO_STREAM("Place");
-	  if (goal->pre_place_endeffector != "")
-	  {
-		plannerGoal.start_config = result.pre_place_traj.back().points.back().positions;
-		plannerGoal.start_config_joint_names = result.pre_place_traj.back().joint_names;
-	  }
-	  else
-	  {
-		plannerGoal.start_config = result.pre_grasp_traj.points.back().positions;
-		plannerGoal.start_config_joint_names = result.pre_grasp_traj.joint_names;
-	  }
+	  plannerGoal.start_config = ac_.getResult()->planned_trajectories.back().points.back().positions;
+	  plannerGoal.start_config_joint_names = ac_.getResult()->planned_trajectories.back().joint_names;
 	  plannerGoal.target_pose = goal->place_pose;
 	  plannerGoal.end_effector_frame_id = goal->place_endeffector;
 	  plannerGoal.activate_pivoting = goal->activate_pivoting;
@@ -246,6 +267,16 @@ public:
 	applyMoveitCollisionObject(collision_obj_initial_state);
 
 	as_.setAborted();
+  }
+
+  void zeroPivotingLink()
+  {
+	ROS_ERROR_STREAM("pick_place_plan_server::zeroPivotingLink() -- NOT IMPLEMENTED ");
+  }
+
+  void simulateGripperClose()
+  {
+	ROS_ERROR_STREAM("pick_place_plan_server::simulateGripperClose() -- NOT IMPLEMENTED ");
   }
 };
 

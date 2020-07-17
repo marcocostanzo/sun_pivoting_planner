@@ -17,6 +17,12 @@ geometry_msgs/PoseStamped place_pose
 # The subframe id to be aligned to the place_pose
 string place_endeffector
 
+# Optional post grasp pose, if post_grasp_effector is empty, the pre place pose is skipped
+# NOTE: The post grasp traj is always without pivoting
+geometry_msgs/PoseStamped post_grasp_pose
+# The subframe id to be aligned to the post_grasp_pose
+string post_grasp_endeffector
+
 # Optional pre place pose, if pre_place_effector is empty, the pre place pose is skipped
 geometry_msgs/PoseStamped pre_place_pose
 # The subframe id to be aligned to the pre_place_pose
@@ -47,6 +53,12 @@ trajectory_msgs/JointTrajectory pre_grasp_traj
 string grasp_subframe
 string pre_grasp_subframe
 
+trajectory_msgs/JointTrajectory grasp_traj
+
+# Possibly empty
+trajectory_msgs/JointTrajectory post_grasp_traj
+
+# Possibly empty
 trajectory_msgs/JointTrajectory[] pre_place_traj
 bool[] pre_place_pivoting_mode
 

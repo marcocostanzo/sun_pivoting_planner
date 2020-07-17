@@ -26,8 +26,13 @@ void SceneObject::fromPlanningScene(planning_scene_monitor::PlanningSceneMonitor
   pose = getCollisionObjectSubframePose(planning_scene_monitor, id, getBaseFrameID());
 }
 
+std::string SceneObject::getBaseFrameID() const
+{
+  return YAML::LoadFile(db + type + ".yaml")["base_frame_id"].as<std::string>();
+}
+
 geometry_msgs::PoseStamped SceneObject::getSubframePose(
-    planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor, const std::string& subframe_name)
+    planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor, const std::string& subframe_name) const
 {
   return getCollisionObjectSubframePose(planning_scene_monitor, id, subframe_name);
 }
@@ -173,7 +178,7 @@ Eigen::Affine3d SceneObject::getRelativeSubframeAffine3d(const std::string& sour
 }
 
 geometry_msgs::PoseStamped
-SceneObject::getSubframePoseFronKnownSubframe(const std::string& subframe_id, const std::string& known_subframe_id,
+SceneObject::getSubframePoseFromKnownSubframe(const std::string& subframe_id, const std::string& known_subframe_id,
                                               const geometry_msgs::PoseStamped& known_subframe_pose)
 {
   Eigen::Affine3d known_T_target = getRelativeSubframeAffine3d(known_subframe_id, subframe_id);

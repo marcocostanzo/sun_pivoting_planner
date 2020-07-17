@@ -28,8 +28,10 @@ public:
   void fromPlanningScene(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
                          const std::string& object_id);
 
+  std::string getBaseFrameID() const;
+
   geometry_msgs::PoseStamped getSubframePose(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
-                                             const std::string& subframe_name);
+                                             const std::string& subframe_name) const;
 
   //! Spawn a new collision object such that the object subframe 'ref_subframe_name' is located in 'ref_subframe_pose'
   void spawn(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor) const;
@@ -58,7 +60,7 @@ public:
   //! get Affine transform of subframe target_subframe w.r.t. source_subframe
   Eigen::Affine3d getRelativeSubframeAffine3d(const std::string& source_subframe, const std::string& target_subframe);
 
-  geometry_msgs::PoseStamped getSubframePoseFronKnownSubframe(const std::string& subframe_id,
+  geometry_msgs::PoseStamped getSubframePoseFromKnownSubframe(const std::string& subframe_id,
                                                               const std::string& known_subframe_id,
                                                               const geometry_msgs::PoseStamped& known_subframe_pose);
 

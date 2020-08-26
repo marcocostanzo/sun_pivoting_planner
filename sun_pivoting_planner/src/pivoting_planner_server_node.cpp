@@ -228,6 +228,12 @@ public:
 
 	double angle = acos(z_cog.dot(z_world) / (z_cog.norm() * z_world.norm()));
 
+	if(angle < 0.05)
+	{
+		ROS_INFO_STREAM("simulate_gravity_pivoting the cog/g angle is almost zero: " << angle);
+		return;
+	}
+
 	// ASSUMPTION: pivoting joint axis is y
 	auto pivoting_link_transform = planning_scene_ro_->getFrameTransform(pivoting_link_name);
 	Eigen::Vector3d piv_joint = pivoting_link_transform.rotation().col(1);

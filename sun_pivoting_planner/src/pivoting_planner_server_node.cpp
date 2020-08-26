@@ -178,22 +178,24 @@ public:
 	return success;
   }
 
-  void simulate_gravity_pivoting_not_attached(const std::string& object_cog_frame_id,
-											  const std::string& pivoting_joint_name, double current_pivoting_angle,
-											  const std::string& attached_object_id,
-											  const std::string& pivoting_link_name)
+  double simulate_gravity_pivoting_not_attached(const std::string& object_cog_frame_id,
+												const std::string& pivoting_joint_name, double current_pivoting_angle,
+												const std::string& attached_object_id,
+												const std::string& pivoting_link_name)
   {
 	std::string link_was_attached =
 		detachCollisionObject(planning_scene_monitor_, attached_object_id, "robot_description");
 	attachCollisionObject(attached_object_id, pivoting_link_name);
-	simulate_gravity_pivoting(object_cog_frame_id, pivoting_joint_name, pivoting_link_name, current_pivoting_angle);
+	double piv_angle =
+		simulate_gravity_pivoting(object_cog_frame_id, pivoting_joint_name, pivoting_link_name, current_pivoting_angle);
 	// ATTACH object to the standard link
 	detachCollisionObject(planning_scene_monitor_, attached_object_id, "robot_description");
 	attachCollisionObject(attached_object_id, link_was_attached);
+	return piv_angle;
   }
 
-  void simulate_gravity_pivoting(const std::string& object_cog_frame_id, const std::string& pivoting_joint_name,
-								 const std::string& pivoting_link_name, double current_pivoting_angle)
+  double simulate_gravity_pivoting(const std::string& object_cog_frame_id, const std::string& pivoting_joint_name,
+								   const std::string& pivoting_link_name, double current_pivoting_angle)
   {
 // DBG
 #ifdef DBG_BTN
@@ -228,10 +230,10 @@ public:
 
 	double angle = acos(z_cog.dot(z_world) / (z_cog.norm() * z_world.norm()));
 
-	if(angle < 0.05)
+	if (angle < 0.05)
 	{
-		ROS_INFO_STREAM("simulate_gravity_pivoting the cog/g angle is almost zero: " << angle);
-		return;
+	  ROS_INFO_STREAM("simulate_gravity_pivoting the cog/g angle is almost zero: " << angle);
+	  return 0.0;
 	}
 
 	// ASSUMPTION: pivoting joint axis is y
@@ -284,6 +286,8 @@ public:
 #endif
 
 	set_simulation_configuration({ (current_pivoting_angle + angle) }, { pivoting_joint_name });
+
+	return angle;
   }
 
   void add_pivoting_constraints(moveit_msgs::Constraints& constraints, const std::string& pivoting_link,
@@ -473,14 +477,14 @@ public:
 
 	moveit::planning_interface::MoveGroupInterface move_group_pivoting(goal->group_arm_pivoting_name);
 
-	simulate_gravity_pivoting_not_attached(goal->attached_object_id + "/" + goal->cog_subframe,
-										   move_group_pivoting.getJointNames().back(),
-										   move_group_pivoting.getCurrentJointValues().back(), goal->attached_object_id,
-										   move_group_pivoting.getLinkNames().back());
+	double piv_angle = simulate_gravity_pivoting_not_attached(
+		goal->attached_object_id + "/" + goal->cog_subframe, move_group_pivoting.getJointNames().back(),
+		move_group_pivoting.getCurrentJointValues().back(), goal->attached_object_id,
+		move_group_pivoting.getLinkNames().back());
 
 	ROS_INFO("Simple Pivoting");
-	if (plan(move_group_arm, goal->end_effector_frame_id, goal->target_pose, goal->path_constraints, planned_traj,
-			 true))
+	if ((piv_angle != 0.0) && plan(move_group_arm, goal->end_effector_frame_id, goal->target_pose,
+								   goal->path_constraints, planned_traj, true))
 	{
 	  set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);
 	  sun_pivoting_planner_msgs::PivotingPlanResult res;
@@ -492,6 +496,8 @@ public:
 	  as_.setSucceeded(res);
 	  return;
 	}
+
+	ROS_INFO("Simple pivoting fail!");
 
 // DBG
 #ifdef DBG_BTN
@@ -554,65 +560,38 @@ public:
 	std::cout << "Constraints: " << pivoting_fixed_position_constraint << std::endl;
 #endif
 
-	bool is_vertical = isVertical(goal->target_pose, move_group_arm.getPoseReferenceFrame());
+	res.pivoting_mode.push_back(true);
+	res.pivoting_mode.push_back(false);
 
-	if (is_vertical)
+	geometry_msgs::PoseStamped p_s = compute_non_vertical_pivoting_pose(
+		fake_traj_joint_names, post_pivoting_joint_position, fake_traj_final_joint_position,
+		move_group_arm.getLinkNames().back(), move_group_pivoting.getPoseReferenceFrame(),
+		move_group_pivoting.getLinkNames().back());
+
+	// TODO, is it possible to use move_group_pivoting here? In order to simulate the actual real robot motion
+	if (!plan(move_group_arm, move_group_arm.getLinkNames().back(), p_s, pivoting_fixed_position_constraint,
+			  planned_traj, false))
 	{
-	  res.pivoting_mode.push_back(true);
-	  res.pivoting_mode.push_back(false);
+	  ROS_INFO("Fail to plan in pivoting mode");
+	  as_.setAborted();
+	  return;
 	}
-	else
-	{
-	  ROS_INFO("NON VERTICAL FINAL POSE!");
 
-	  res.pivoting_mode.push_back(true);
-	  res.pivoting_mode.push_back(false);
-	  res.pivoting_mode.push_back(false);
+	res.planned_trajectories.push_back(planned_traj);
+	set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);
 
-	  geometry_msgs::PoseStamped p_s = compute_non_vertical_pivoting_pose(
-		  fake_traj_joint_names, post_pivoting_joint_position, fake_traj_final_joint_position,
-		  move_group_arm.getLinkNames().back(), move_group_pivoting.getPoseReferenceFrame(),
-		  move_group_pivoting.getLinkNames().back());
+	// At this point the object should be vertical
+	simulate_gravity_pivoting_not_attached(goal->attached_object_id + "/" + goal->cog_subframe,
+										   move_group_pivoting.getJointNames().back(),
+										   move_group_pivoting.getCurrentJointValues().back(), goal->attached_object_id,
+										   move_group_pivoting.getLinkNames().back());
 
-	  if (!plan(move_group_arm, move_group_arm.getLinkNames().back(), p_s, pivoting_fixed_position_constraint,
-				planned_traj, false))
-	  {
-		ROS_INFO("Fail to plan in pivoting mode");
-		as_.setAborted();
-		return;
-	  }
-
-	  res.planned_trajectories.push_back(planned_traj);
-	  set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);
-
-	  // At this point the object should be vertical
-	  simulate_gravity_pivoting_not_attached(goal->attached_object_id + "/" + goal->cog_subframe,
-											 move_group_pivoting.getJointNames().back(),
-											 move_group_pivoting.getCurrentJointValues().back(),
-											 goal->attached_object_id, move_group_pivoting.getLinkNames().back());
-
-	  post_pivoting_joint_position = move_group_pivoting.getCurrentJointValues();
-	}
+	post_pivoting_joint_position = move_group_pivoting.getCurrentJointValues();
 
 #ifdef DBG_BTN
 	std::cout << "computing p_p [button]" << std::endl;
 	std::cin >> ans;
 #endif
-
-	geometry_msgs::PoseStamped p_p =
-		compute_after_pivoting_pose(fake_traj_joint_names, post_pivoting_joint_position, fake_traj_final_joint_position,
-									move_group_arm.getLinkNames().back(), move_group_pivoting.getPoseReferenceFrame());
-
-// DBG
-#ifdef DBG_BTN
-	std::cout << p_p << std::endl;
-	std::cout << "p_p computed [button]" << std::endl;
-	std::cin >> ans;
-	std::cout << "change attach grasp state [button]" << std::endl;
-	std::cin >> ans;
-#endif
-
-	// TODO, is it possible to use move_group_pivoting here? In order to simulate the actual real robot motion
 
 	// ATTACH object to the standard link
 	detachCollisionObject(planning_scene_monitor_, goal->attached_object_id, "robot_description");
@@ -622,48 +601,6 @@ public:
 #ifdef DBG_BTN
 	print_collision_obj_state(planning_scene_monitor_);
 	std::cout << "attach grasp state changed [button]" << std::endl;
-	std::cin >> ans;
-#endif
-
-// DBG
-#ifdef DBG_BTN
-	std::cout << "plan p_p [button]" << std::endl;
-	std::cin >> ans;
-#endif
-
-	if (!plan(move_group_arm, move_group_arm.getLinkNames().back(), p_p, pivoting_fixed_position_constraint,
-			  planned_traj, false))
-	{
-	  ROS_INFO("Fail to plan to p_p");
-	  as_.setAborted();
-	  return;
-	}
-
-// DBG
-#ifdef DBG_BTN
-	std::cout << "p_p planned [button]" << std::endl;
-	std::cin >> ans;
-#endif
-
-	res.planned_trajectories.push_back(planned_traj);
-	set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);
-
-// DBG
-#ifdef DBG_BTN
-	std::cout << "simulate pivoting [button]" << std::endl;
-	std::cin >> ans;
-#endif
-
-	// TO simulate pivoting, attach obj to pivoting link (only if final pose is vertical)
-	if (is_vertical)
-	  simulate_gravity_pivoting_not_attached(goal->attached_object_id + "/" + goal->cog_subframe,
-											 move_group_pivoting.getJointNames().back(),
-											 move_group_pivoting.getCurrentJointValues().back(),
-											 goal->attached_object_id, move_group_pivoting.getLinkNames().back());
-
-// DBG
-#ifdef DBG_BTN
-	std::cout << "pivoting simulated [button]" << std::endl;
 	std::cin >> ans;
 #endif
 

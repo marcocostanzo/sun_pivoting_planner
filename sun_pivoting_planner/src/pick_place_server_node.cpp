@@ -47,6 +47,11 @@ protected:
 
   planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
 
+  ros::Publisher pub_simulated_joint_;
+  std::string pivoting_joint_name_ = "iiwa_joint_pivoting";
+  std::string gripper_joint_name_ = "iiwa_wsg_50_gripper_joint";
+  double gripper_joint_offset = 0.018;
+
 public:
   PickPlacePlannerActionServer(const std::string& name, const std::string& pivoting_plan_action_name,
 							   const ros::NodeHandle& nh = ros::NodeHandle())
@@ -59,6 +64,8 @@ public:
   {
 	ac_.waitForServer();
 	as_.start();
+	pub_simulated_joint_ = nh_.advertise<sensor_msgs::JointState>("/move_group/fake_controller_joint_states", 1);
+	ROS_ERROR("WARN! pick_place_planner: pivoting and gripper joint hardcoded to iiwa/wsg50");
   }
 
   ~PickPlacePlannerActionServer(void)
@@ -99,6 +106,7 @@ public:
 	std::vector<std::string> grasp_frames_ids = obj_yaml["grasp_frames_ids"].as<std::vector<std::string>>();
 	std::vector<std::string> pre_grasp_frames_ids = obj_yaml["pregrasp_frames_ids"].as<std::vector<std::string>>();
 	std::string cog_frame_id = obj_yaml["cog_frame_id"].as<std::string>();
+	double part_width = obj_yaml["part_width"].as<double>();
 
 	// Test all possible grasps
 	int i;
@@ -174,7 +182,7 @@ public:
 	  moveCollisionObject(planning_scene_monitor_, goal->object_id, pose_move, grasp_frames_ids[i]);
 	  zeroPivotingLink();
 	  attachCollisionObject(goal->object_id, goal->grasp_link);
-	  simulateGripperClose();
+	  simulateGripperClose(part_width);
 
 	  //* Post Grasp *//
 	  if (goal->post_grasp_endeffector != "")
@@ -269,14 +277,26 @@ public:
 	as_.setAborted();
   }
 
-  void zeroPivotingLink()
+  void set_simulation_configuration(const std::vector<double>& joint_position,
+									const std::vector<std::string>& joint_names)
   {
-	ROS_ERROR_STREAM("pick_place_plan_server::zeroPivotingLink() -- NOT IMPLEMENTED ");
+	sensor_msgs::JointState msg;
+	msg.name = joint_names;
+	msg.position = joint_position;
+	msg.velocity.resize(joint_names.size());
+	msg.effort.resize(joint_names.size());
+	pub_simulated_joint_.publish(msg);
+	ros::Duration(0.5).sleep();
   }
 
-  void simulateGripperClose()
+  void zeroPivotingLink()
   {
-	ROS_ERROR_STREAM("pick_place_plan_server::simulateGripperClose() -- NOT IMPLEMENTED ");
+	set_simulation_configuration({ 0.0 }, { pivoting_joint_name_ });
+  }
+
+  void simulateGripperClose( double part_width )
+  {
+	set_simulation_configuration({ gripper_joint_offset + part_width }, { gripper_joint_name_ });
   }
 };
 

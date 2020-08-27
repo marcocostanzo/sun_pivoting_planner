@@ -31,7 +31,7 @@ double compute_traj_length(const trajectory_msgs::JointTrajectory& traj);
 void add_joint_configuration_constraints(const Joint_Conf_Constraint& joint_conf_constraint,
                                          moveit::planning_interface::MoveGroupInterface& move_group,
                                          const moveit_msgs::Constraints& path_constraints_in,
-                                         moveit_msgs::Constraints& path_constraints_out, double move_range_relax);
+                                         moveit_msgs::Constraints& path_constraints_out, double move_range_multiplier);
 
 moveit_msgs::CollisionObject
 getMoveitCollisionObject(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,

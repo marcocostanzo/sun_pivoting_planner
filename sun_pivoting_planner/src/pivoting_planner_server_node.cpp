@@ -44,7 +44,7 @@ protected:
   ros::Publisher pub_simulated_joint_;
 
   Joint_Conf_Constraint joint_conf_constraint_;
-  std::vector<double> joint_conf_constraint_relax_;
+  std::vector<double> joint_conf_constraint_multiplier_;
 
   double plan_time = 2.0;
   int num_planning_attempts = 4;
@@ -63,18 +63,18 @@ public:
 	pub_simulated_joint_ = nh_.advertise<sensor_msgs::JointState>("/move_group/fake_controller_joint_states", 1);
 
 	joint_conf_constraint_.joint_names.push_back("iiwa_joint_1");
-	joint_conf_constraint_.move_range.push_back((2.0 * 170.0) / 4.0 * M_PI / 180.0);
+	joint_conf_constraint_.move_range.push_back((2.0 * 170.0) * M_PI / 180.0);
 	joint_conf_constraint_.joint_names.push_back("iiwa_joint_2");
-	joint_conf_constraint_.move_range.push_back((2.0 * 120.0) / 4.0 * M_PI / 180.0);
+	joint_conf_constraint_.move_range.push_back((2.0 * 120.0) * M_PI / 180.0);
 	joint_conf_constraint_.joint_names.push_back("iiwa_joint_3");
-	joint_conf_constraint_.move_range.push_back((2.0 * 170.0) / 4.0 * M_PI / 180.0);
+	joint_conf_constraint_.move_range.push_back((2.0 * 170.0) * M_PI / 180.0);
 	joint_conf_constraint_.joint_names.push_back("iiwa_joint_4");
-	joint_conf_constraint_.move_range.push_back((2.0 * 120.0) / 4.0 * M_PI / 180.0);
+	joint_conf_constraint_.move_range.push_back((2.0 * 120.0) * M_PI / 180.0);
 	// joint_conf_constraint_.move_range.push_back((2.0*120.0)/1.0 *M_PI/180.0);
 	// joint_conf_constraint_.move_range.push_back((2.0*170.0)/1.0 *M_PI/180.0);
 	// joint_conf_constraint_.move_range.push_back((2.0*120.0)/1.0 *M_PI/180.0);
 
-	joint_conf_constraint_relax_ = { 1.0, 1.5, 2.0, 4.0 };
+	joint_conf_constraint_multiplier_ = { 1.0 / 4.0, 1.5 / 4.0, 2.0 / 4.0 };
   }
 
   ~PivotingPlannerActionServer(void)
@@ -103,79 +103,104 @@ public:
 	  return false;
 	}
 
-	ROS_INFO("pivoting_planner INIT PLAN");
+	ROS_INFO("pivoting_planner INIT low level PLAN");
 
 	bool success = false;
-	double traj_length = INFINITY;
-
-	int num_attempts = 0;
-
 	ros::Time time0 = ros::Time::now();
+	trajectory_msgs::JointTrajectory unconstrained_traj;
 
-	while (!success && num_attempts < joint_conf_constraint_relax_.size())
+	////////////
+
+	int i = -1;
+	while (true)
 	{
-	  ROS_INFO_STREAM("pivoting_planner attempt #" << num_attempts);
-	  ROS_INFO_STREAM("Elapsed Time: " << (ros::Time::now() - time0).toSec() / 60.0 << " m");
+	  ROS_INFO_STREAM("Plan " << (i + 1) << "/"
+							  << (use_configuration_constraints ? joint_conf_constraint_multiplier_.size() : 0));
 
+	  ROS_INFO_STREAM("Elapsed Time: " << (ros::Time::now() - time0).toSec() << " s");
+
+	  // First plan without joint constraints
+	  bool use_configuration_constraints_internal = (i != -1) && use_configuration_constraints;
+
+	  /*Plan kernel*/
 	  // cleanup
 	  move_group.clearPathConstraints();
 	  move_group.clearPoseTargets();
-
 	  move_group.setEndEffectorLink(end_effector_frame_id);
-
 	  // Add configuration constraints
 	  moveit_msgs::Constraints path_constraints_ = path_constraints;
-	  if (use_configuration_constraints)
+	  if (use_configuration_constraints_internal)
 	  {
 		add_joint_configuration_constraints(joint_conf_constraint_, move_group, path_constraints, path_constraints_,
-											joint_conf_constraint_relax_[num_attempts]);
+											joint_conf_constraint_multiplier_[i]);
 	  }
-	  num_attempts++;
-
+	  // plan
 	  move_group.setPathConstraints(path_constraints_);
-
 	  move_group.setPoseTarget(target_pose);
-
 	  move_group.setPlannerId(plannerID);
-
 	  move_group.setPlanningTime(plan_time);
 	  move_group.setNumPlanningAttempts(num_planning_attempts);
-
 	  ROS_INFO_STREAM("PlannerId: " << move_group.getPlannerId());
 	  ROS_INFO_STREAM("PlanningTime: " << plan_time);
-
 	  moveit::planning_interface::MoveGroupInterface::Plan my_plan;
-
 	  ROS_INFO("PLANNING...");
 	  moveit::planning_interface::MoveItErrorCode result = move_group.plan(my_plan);
 	  ROS_INFO_STREAM("PLANNED with result: " << result);
 	  success = (result == moveit::planning_interface::MoveItErrorCode::SUCCESS);
-
 	  ROS_INFO_STREAM("PLAN " << (success ? "SUCCESS" : "FAILED"));
+	  /*END Plan kernel*/
 
-	  if (success)
+	  // first unconstrained plan failed -> plan infeasible
+	  if (i == -1 && !success)
 	  {
-		double tmp_traj_length = compute_traj_length(my_plan.trajectory_.joint_trajectory);
-		ROS_INFO_STREAM("PLAN SUCCESS with length: " << tmp_traj_length);
-		if (tmp_traj_length < traj_length)
-		{
-		  ROS_INFO_STREAM("PLAN found a better traj");
-		  planned_traj = my_plan.trajectory_.joint_trajectory;
-		  traj_length = tmp_traj_length;
-		}
+		ROS_ERROR_STREAM("Planner without joint constraint not success");
+		return false;
 	  }
 
-	  ROS_INFO_STREAM("pivoting_planner attempt #" << num_attempts);
-	  ROS_INFO_STREAM("Elapsed Time: " << (ros::Time::now() - time0).toSec() / 60.0 << " m");
+	  if (i == -1 && success)
+	  {
+		unconstrained_traj = my_plan.trajectory_.joint_trajectory;
+	  }
 
-	}  // end while
+	  // The first condition should match first
+	  if (!use_configuration_constraints && !success)
+	  {
+		ROS_ERROR_STREAM("I SHOULD NOT BE HERE - Planner without joint constraint not success");
+		return false;
+	  }
 
-	if (success)
-	{
-	  ROS_INFO_STREAM("FINAL TRAJ LENGTH: " << traj_length);
+	  if (!use_configuration_constraints && success)
+	  {
+		double tmp_traj_length = compute_traj_length(my_plan.trajectory_.joint_trajectory);
+		ROS_INFO_STREAM("Planner without joint constraint success! traj_length=" << tmp_traj_length);
+		ROS_INFO_STREAM("Elapsed Time: " << (ros::Time::now() - time0).toSec() << " s");
+		planned_traj = my_plan.trajectory_.joint_trajectory;
+		return true;
+	  }
+
+	  if (i != -1 && success)
+	  {
+		double tmp_traj_length = compute_traj_length(my_plan.trajectory_.joint_trajectory);
+		ROS_INFO_STREAM("PLAN SUCCESS with length: " << tmp_traj_length << " at attempt =" << (i + 1) << "/"
+													 << joint_conf_constraint_multiplier_.size());
+		ROS_INFO_STREAM("Elapsed Time: " << (ros::Time::now() - time0).toSec() << " s");
+		planned_traj = my_plan.trajectory_.joint_trajectory;
+		return true;
+	  }
+
+	  i++;
+	  if (i >= joint_conf_constraint_multiplier_.size())
+	  {
+		double tmp_traj_length = compute_traj_length(unconstrained_traj);
+		ROS_INFO_STREAM("PLAN SUCCESS only with the unconstrained joint traj - length: " << tmp_traj_length);
+		ROS_INFO_STREAM("Elapsed Time: " << (ros::Time::now() - time0).toSec() << " s");
+		planned_traj = unconstrained_traj;
+		return true;
+	  }
 	}
 
-	return success;
+	ROS_ERROR_STREAM("FATAL - after while true in plan !?");
+	return false;
   }
 
   double simulate_gravity_pivoting_not_attached(const std::string& object_cog_frame_id,

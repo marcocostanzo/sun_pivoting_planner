@@ -45,7 +45,7 @@ double compute_traj_length(const trajectory_msgs::JointTrajectory& traj)
 void add_joint_configuration_constraints(const Joint_Conf_Constraint& joint_conf_constraint,
                                          moveit::planning_interface::MoveGroupInterface& move_group,
                                          const moveit_msgs::Constraints& path_constraints_in,
-                                         moveit_msgs::Constraints& path_constraints_out, double move_range_relax)
+                                         moveit_msgs::Constraints& path_constraints_out, double move_range_multiplier)
 {
   path_constraints_out = path_constraints_in;
 
@@ -54,7 +54,7 @@ void add_joint_configuration_constraints(const Joint_Conf_Constraint& joint_conf
   for (int j = 0; j < joint_conf_constraint.joint_names.size(); j++)
   {
     std::string j_name = joint_conf_constraint.joint_names[j];
-    double j_move_range = move_range_relax * joint_conf_constraint.move_range[j];
+    double j_move_range = move_range_multiplier * joint_conf_constraint.move_range[j];
 
     moveit_msgs::JointConstraint joint_constraint;
     joint_constraint.weight = 1.0;

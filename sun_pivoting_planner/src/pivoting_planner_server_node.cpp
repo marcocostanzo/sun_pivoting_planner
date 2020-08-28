@@ -70,6 +70,12 @@ public:
 	joint_conf_constraint_.move_range.push_back((2.0 * 170.0) * M_PI / 180.0);
 	joint_conf_constraint_.joint_names.push_back("iiwa_joint_4");
 	joint_conf_constraint_.move_range.push_back((2.0 * 120.0) * M_PI / 180.0);
+	joint_conf_constraint_.joint_names.push_back("iiwa_joint_5");
+	joint_conf_constraint_.move_range.push_back((2.0 * 170.0) * 0.9 * M_PI / 180.0);
+	// joint_conf_constraint_.joint_names.push_back("iiwa_joint_6");
+	// joint_conf_constraint_.move_range.push_back((2.0 * 120.0) * 0.9 * M_PI / 180.0);
+	// joint_conf_constraint_.joint_names.push_back("iiwa_joint_7");
+	// joint_conf_constraint_.move_range.push_back((2.0 * 175.0) * 0.9 * M_PI / 180.0);
 	// joint_conf_constraint_.move_range.push_back((2.0*120.0)/1.0 *M_PI/180.0);
 	// joint_conf_constraint_.move_range.push_back((2.0*170.0)/1.0 *M_PI/180.0);
 	// joint_conf_constraint_.move_range.push_back((2.0*120.0)/1.0 *M_PI/180.0);
@@ -133,6 +139,11 @@ public:
 	  {
 		add_joint_configuration_constraints(joint_conf_constraint_, move_group, path_constraints, path_constraints_,
 											joint_conf_constraint_multiplier_[i]);
+	  }
+	  else
+	  {
+		add_joint_configuration_constraints(joint_conf_constraint_, move_group, path_constraints, path_constraints_,
+											1.0);
 	  }
 	  // plan
 	  move_group.setPathConstraints(path_constraints_);

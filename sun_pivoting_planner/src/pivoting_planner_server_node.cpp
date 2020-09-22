@@ -45,6 +45,7 @@ protected:
 
   Joint_Conf_Constraint joint_conf_constraint_;
   std::vector<double> joint_conf_constraint_multiplier_;
+  bool try_unconstrained_first = true; // debug flag. Keep it true
 
   double plan_time = 2.0;
   int num_planning_attempts = 4;
@@ -81,6 +82,8 @@ public:
 	// joint_conf_constraint_.move_range.push_back((2.0*120.0)/1.0 *M_PI/180.0);
 
 	joint_conf_constraint_multiplier_ = { 1.0 / 4.0, 1.5 / 4.0, 2.0 / 4.0 };
+	if (!try_unconstrained_first)
+	  joint_conf_constraint_multiplier_.push_back(1.0);
   }
 
   ~PivotingPlannerActionServer(void)
@@ -101,7 +104,7 @@ public:
 
   bool plan(moveit::planning_interface::MoveGroupInterface& move_group, const std::string& end_effector_frame_id,
 			const geometry_msgs::PoseStamped& target_pose, const moveit_msgs::Constraints& path_constraints,
-			trajectory_msgs::JointTrajectory& planned_traj, bool use_configuration_constraints = true)
+			trajectory_msgs::JointTrajectory& planned_traj, bool use_configuration_constraints = true, bool absolutely_no_joint_constraints = false)
   {
 	if (target_pose.header.frame_id == "")
 	{
@@ -117,7 +120,7 @@ public:
 
 	////////////
 
-	int i = -1;
+	int i = try_unconstrained_first ? -1 : 0;
 	while (true)
 	{
 	  ROS_INFO_STREAM("Plan " << (i + 1) << "/"
@@ -140,7 +143,7 @@ public:
 		add_joint_configuration_constraints(joint_conf_constraint_, move_group, path_constraints, path_constraints_,
 											joint_conf_constraint_multiplier_[i]);
 	  }
-	  else
+	  else if(!absolutely_no_joint_constraints)
 	  {
 		add_joint_configuration_constraints(joint_conf_constraint_, move_group, path_constraints, path_constraints_,
 											1.0);
@@ -173,8 +176,8 @@ public:
 		unconstrained_traj = my_plan.trajectory_.joint_trajectory;
 	  }
 
-	  // The first condition should match first
-	  if (!use_configuration_constraints && !success)
+	  //   The first condition should match first
+	  if (try_unconstrained_first && !use_configuration_constraints && !success)
 	  {
 		ROS_ERROR_STREAM("I SHOULD NOT BE HERE - Planner without joint constraint not success");
 		return false;
@@ -202,6 +205,11 @@ public:
 	  i++;
 	  if (i >= joint_conf_constraint_multiplier_.size())
 	  {
+		if (try_unconstrained_first)
+		{
+		  ROS_ERROR_STREAM("NO SUCCESS");
+		  return false;
+		}
 		double tmp_traj_length = compute_traj_length(unconstrained_traj);
 		ROS_INFO_STREAM("PLAN SUCCESS only with the unconstrained joint traj - length: " << tmp_traj_length);
 		ROS_INFO_STREAM("Elapsed Time: " << (ros::Time::now() - time0).toSec() << " s");
@@ -606,7 +614,7 @@ public:
 
 	// TODO, is it possible to use move_group_pivoting here? In order to simulate the actual real robot motion
 	if (!plan(move_group_arm, move_group_arm.getLinkNames().back(), p_s, pivoting_fixed_position_constraint,
-			  planned_traj, false))
+			  planned_traj, false, true))
 	{
 	  ROS_INFO("Fail to plan in pivoting mode");
 	  as_.setAborted();

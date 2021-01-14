@@ -44,8 +44,7 @@ protected:
   ros::Publisher pub_simulated_joint_;
 
   Joint_Conf_Constraint joint_conf_constraint_;
-  std::vector<double> joint_conf_constraint_multiplier_;
-  bool try_unconstrained_first = true; // debug flag. Keep it true
+  std::vector<double> joint_conf_constraint_relax_;
 
   double plan_time = 2.0;
   int num_planning_attempts = 4;
@@ -64,26 +63,18 @@ public:
 	pub_simulated_joint_ = nh_.advertise<sensor_msgs::JointState>("/move_group/fake_controller_joint_states", 1);
 
 	joint_conf_constraint_.joint_names.push_back("iiwa_joint_1");
-	joint_conf_constraint_.move_range.push_back((2.0 * 170.0) * M_PI / 180.0);
+	joint_conf_constraint_.move_range.push_back((2.0 * 170.0) / 4.0 * M_PI / 180.0);
 	joint_conf_constraint_.joint_names.push_back("iiwa_joint_2");
-	joint_conf_constraint_.move_range.push_back((2.0 * 120.0) * M_PI / 180.0);
+	joint_conf_constraint_.move_range.push_back((2.0 * 120.0) / 4.0 * M_PI / 180.0);
 	joint_conf_constraint_.joint_names.push_back("iiwa_joint_3");
-	joint_conf_constraint_.move_range.push_back((2.0 * 170.0) * M_PI / 180.0);
+	joint_conf_constraint_.move_range.push_back((2.0 * 170.0) / 4.0 * M_PI / 180.0);
 	joint_conf_constraint_.joint_names.push_back("iiwa_joint_4");
-	joint_conf_constraint_.move_range.push_back((2.0 * 120.0) * M_PI / 180.0);
-	joint_conf_constraint_.joint_names.push_back("iiwa_joint_5");
-	joint_conf_constraint_.move_range.push_back((2.0 * 170.0) * 0.9 * M_PI / 180.0);
-	// joint_conf_constraint_.joint_names.push_back("iiwa_joint_6");
-	// joint_conf_constraint_.move_range.push_back((2.0 * 120.0) * 0.9 * M_PI / 180.0);
-	// joint_conf_constraint_.joint_names.push_back("iiwa_joint_7");
-	// joint_conf_constraint_.move_range.push_back((2.0 * 175.0) * 0.9 * M_PI / 180.0);
+	joint_conf_constraint_.move_range.push_back((2.0 * 120.0) / 4.0 * M_PI / 180.0);
 	// joint_conf_constraint_.move_range.push_back((2.0*120.0)/1.0 *M_PI/180.0);
 	// joint_conf_constraint_.move_range.push_back((2.0*170.0)/1.0 *M_PI/180.0);
 	// joint_conf_constraint_.move_range.push_back((2.0*120.0)/1.0 *M_PI/180.0);
 
-	joint_conf_constraint_multiplier_ = { 1.0 / 4.0, 1.5 / 4.0, 2.0 / 4.0 };
-	if (!try_unconstrained_first)
-	  joint_conf_constraint_multiplier_.push_back(1.0);
+	joint_conf_constraint_relax_ = { 1.0, 1.5, 2.0, 4.0 };
   }
 
   ~PivotingPlannerActionServer(void)
@@ -104,7 +95,7 @@ public:
 
   bool plan(moveit::planning_interface::MoveGroupInterface& move_group, const std::string& end_effector_frame_id,
 			const geometry_msgs::PoseStamped& target_pose, const moveit_msgs::Constraints& path_constraints,
-			trajectory_msgs::JointTrajectory& planned_traj, bool use_configuration_constraints = true, bool absolutely_no_joint_constraints = false)
+			trajectory_msgs::JointTrajectory& planned_traj, bool use_configuration_constraints = true)
   {
 	if (target_pose.header.frame_id == "")
 	{
@@ -112,134 +103,97 @@ public:
 	  return false;
 	}
 
-	ROS_INFO("pivoting_planner INIT low level PLAN");
+	ROS_INFO("pivoting_planner INIT PLAN");
 
 	bool success = false;
+	double traj_length = INFINITY;
+
+	int num_attempts = 0;
+
 	ros::Time time0 = ros::Time::now();
-	trajectory_msgs::JointTrajectory unconstrained_traj;
 
-	////////////
-
-	int i = try_unconstrained_first ? -1 : 0;
-	while (true)
+	while (!success && num_attempts < joint_conf_constraint_relax_.size())
 	{
-	  ROS_INFO_STREAM("Plan " << (i + 1) << "/"
-							  << (use_configuration_constraints ? joint_conf_constraint_multiplier_.size() : 0));
+	  ROS_INFO_STREAM("pivoting_planner attempt #" << num_attempts);
+	  ROS_INFO_STREAM("Elapsed Time: " << (ros::Time::now() - time0).toSec() / 60.0 << " m");
 
-	  ROS_INFO_STREAM("Elapsed Time: " << (ros::Time::now() - time0).toSec() << " s");
-
-	  // First plan without joint constraints
-	  bool use_configuration_constraints_internal = (i != -1) && use_configuration_constraints;
-
-	  /*Plan kernel*/
 	  // cleanup
 	  move_group.clearPathConstraints();
 	  move_group.clearPoseTargets();
+
 	  move_group.setEndEffectorLink(end_effector_frame_id);
+
 	  // Add configuration constraints
 	  moveit_msgs::Constraints path_constraints_ = path_constraints;
-	  if (use_configuration_constraints_internal)
+	  if (use_configuration_constraints)
 	  {
 		add_joint_configuration_constraints(joint_conf_constraint_, move_group, path_constraints, path_constraints_,
-											joint_conf_constraint_multiplier_[i]);
+											joint_conf_constraint_relax_[num_attempts]);
 	  }
-	  else if(!absolutely_no_joint_constraints)
-	  {
-		add_joint_configuration_constraints(joint_conf_constraint_, move_group, path_constraints, path_constraints_,
-											1.0);
-	  }
-	  // plan
+	  num_attempts++;
+
 	  move_group.setPathConstraints(path_constraints_);
+
 	  move_group.setPoseTarget(target_pose);
+
 	  move_group.setPlannerId(plannerID);
+
 	  move_group.setPlanningTime(plan_time);
 	  move_group.setNumPlanningAttempts(num_planning_attempts);
+
 	  ROS_INFO_STREAM("PlannerId: " << move_group.getPlannerId());
 	  ROS_INFO_STREAM("PlanningTime: " << plan_time);
+
 	  moveit::planning_interface::MoveGroupInterface::Plan my_plan;
+
 	  ROS_INFO("PLANNING...");
 	  moveit::planning_interface::MoveItErrorCode result = move_group.plan(my_plan);
 	  ROS_INFO_STREAM("PLANNED with result: " << result);
 	  success = (result == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+
 	  ROS_INFO_STREAM("PLAN " << (success ? "SUCCESS" : "FAILED"));
-	  /*END Plan kernel*/
 
-	  // first unconstrained plan failed -> plan infeasible
-	  if (i == -1 && !success)
-	  {
-		ROS_ERROR_STREAM("Planner without joint constraint not success");
-		return false;
-	  }
-
-	  if (i == -1 && success)
-	  {
-		unconstrained_traj = my_plan.trajectory_.joint_trajectory;
-	  }
-
-	  //   The first condition should match first
-	  if (try_unconstrained_first && !use_configuration_constraints && !success)
-	  {
-		ROS_ERROR_STREAM("I SHOULD NOT BE HERE - Planner without joint constraint not success");
-		return false;
-	  }
-
-	  if (!use_configuration_constraints && success)
+	  if (success)
 	  {
 		double tmp_traj_length = compute_traj_length(my_plan.trajectory_.joint_trajectory);
-		ROS_INFO_STREAM("Planner without joint constraint success! traj_length=" << tmp_traj_length);
-		ROS_INFO_STREAM("Elapsed Time: " << (ros::Time::now() - time0).toSec() << " s");
-		planned_traj = my_plan.trajectory_.joint_trajectory;
-		return true;
-	  }
-
-	  if (i != -1 && success)
-	  {
-		double tmp_traj_length = compute_traj_length(my_plan.trajectory_.joint_trajectory);
-		ROS_INFO_STREAM("PLAN SUCCESS with length: " << tmp_traj_length << " at attempt =" << (i + 1) << "/"
-													 << joint_conf_constraint_multiplier_.size());
-		ROS_INFO_STREAM("Elapsed Time: " << (ros::Time::now() - time0).toSec() << " s");
-		planned_traj = my_plan.trajectory_.joint_trajectory;
-		return true;
-	  }
-
-	  i++;
-	  if (i >= joint_conf_constraint_multiplier_.size())
-	  {
-		if (try_unconstrained_first)
+		ROS_INFO_STREAM("PLAN SUCCESS with length: " << tmp_traj_length);
+		if (tmp_traj_length < traj_length)
 		{
-		  ROS_ERROR_STREAM("NO SUCCESS");
-		  return false;
+		  ROS_INFO_STREAM("PLAN found a better traj");
+		  planned_traj = my_plan.trajectory_.joint_trajectory;
+		  traj_length = tmp_traj_length;
 		}
-		double tmp_traj_length = compute_traj_length(unconstrained_traj);
-		ROS_INFO_STREAM("PLAN SUCCESS only with the unconstrained joint traj - length: " << tmp_traj_length);
-		ROS_INFO_STREAM("Elapsed Time: " << (ros::Time::now() - time0).toSec() << " s");
-		planned_traj = unconstrained_traj;
-		return true;
 	  }
+
+	  ROS_INFO_STREAM("pivoting_planner attempt #" << num_attempts);
+	  ROS_INFO_STREAM("Elapsed Time: " << (ros::Time::now() - time0).toSec() / 60.0 << " m");
+
+	}  // end while
+
+	if (success)
+	{
+	  ROS_INFO_STREAM("FINAL TRAJ LENGTH: " << traj_length);
 	}
 
-	ROS_ERROR_STREAM("FATAL - after while true in plan !?");
-	return false;
+	return success;
   }
 
-  double simulate_gravity_pivoting_not_attached(const std::string& object_cog_frame_id,
-												const std::string& pivoting_joint_name, double current_pivoting_angle,
-												const std::string& attached_object_id,
-												const std::string& pivoting_link_name)
+  void simulate_gravity_pivoting_not_attached(const std::string& object_cog_frame_id,
+											  const std::string& pivoting_joint_name, double current_pivoting_angle,
+											  const std::string& attached_object_id,
+											  const std::string& pivoting_link_name)
   {
 	std::string link_was_attached =
 		detachCollisionObject(planning_scene_monitor_, attached_object_id, "robot_description");
 	attachCollisionObject(attached_object_id, pivoting_link_name);
-	double piv_angle =
-		simulate_gravity_pivoting(object_cog_frame_id, pivoting_joint_name, pivoting_link_name, current_pivoting_angle);
+	simulate_gravity_pivoting(object_cog_frame_id, pivoting_joint_name, pivoting_link_name, current_pivoting_angle);
 	// ATTACH object to the standard link
 	detachCollisionObject(planning_scene_monitor_, attached_object_id, "robot_description");
 	attachCollisionObject(attached_object_id, link_was_attached);
-	return piv_angle;
   }
 
-  double simulate_gravity_pivoting(const std::string& object_cog_frame_id, const std::string& pivoting_joint_name,
-								   const std::string& pivoting_link_name, double current_pivoting_angle)
+  void simulate_gravity_pivoting(const std::string& object_cog_frame_id, const std::string& pivoting_joint_name,
+								 const std::string& pivoting_link_name, double current_pivoting_angle)
   {
 // DBG
 #ifdef DBG_BTN
@@ -274,10 +228,10 @@ public:
 
 	double angle = acos(z_cog.dot(z_world) / (z_cog.norm() * z_world.norm()));
 
-	if (angle < 0.05)
+	if(angle < 0.05)
 	{
-	  ROS_INFO_STREAM("simulate_gravity_pivoting the cog/g angle is almost zero: " << angle);
-	  return 0.0;
+		ROS_INFO_STREAM("simulate_gravity_pivoting the cog/g angle is almost zero: " << angle);
+		return;
 	}
 
 	// ASSUMPTION: pivoting joint axis is y
@@ -330,8 +284,6 @@ public:
 #endif
 
 	set_simulation_configuration({ (current_pivoting_angle + angle) }, { pivoting_joint_name });
-
-	return angle;
   }
 
   void add_pivoting_constraints(moveit_msgs::Constraints& constraints, const std::string& pivoting_link,
@@ -468,16 +420,6 @@ public:
 	std::cin >> ans;
 #endif
 
-	if(goal->plan_time > 0)
-	{
-		plan_time = goal->plan_time;
-	}
-	else
-	{
-		plan_time = 2.0;
-	}
-	
-
 	/* Bring Simulated Robot to the initial configuration */
 	set_simulation_configuration(goal->start_config, goal->start_config_joint_names);
 
@@ -531,14 +473,14 @@ public:
 
 	moveit::planning_interface::MoveGroupInterface move_group_pivoting(goal->group_arm_pivoting_name);
 
-	double piv_angle = simulate_gravity_pivoting_not_attached(
-		goal->attached_object_id + "/" + goal->cog_subframe, move_group_pivoting.getJointNames().back(),
-		move_group_pivoting.getCurrentJointValues().back(), goal->attached_object_id,
-		move_group_pivoting.getLinkNames().back());
+	simulate_gravity_pivoting_not_attached(goal->attached_object_id + "/" + goal->cog_subframe,
+										   move_group_pivoting.getJointNames().back(),
+										   move_group_pivoting.getCurrentJointValues().back(), goal->attached_object_id,
+										   move_group_pivoting.getLinkNames().back());
 
 	ROS_INFO("Simple Pivoting");
-	if ((piv_angle != 0.0) && plan(move_group_arm, goal->end_effector_frame_id, goal->target_pose,
-								   goal->path_constraints, planned_traj, true))
+	if (plan(move_group_arm, goal->end_effector_frame_id, goal->target_pose, goal->path_constraints, planned_traj,
+			 true))
 	{
 	  set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);
 	  sun_pivoting_planner_msgs::PivotingPlanResult res;
@@ -550,8 +492,6 @@ public:
 	  as_.setSucceeded(res);
 	  return;
 	}
-
-	ROS_INFO("Simple pivoting fail!");
 
 // DBG
 #ifdef DBG_BTN
@@ -614,38 +554,65 @@ public:
 	std::cout << "Constraints: " << pivoting_fixed_position_constraint << std::endl;
 #endif
 
-	res.pivoting_mode.push_back(true);
-	res.pivoting_mode.push_back(false);
+	bool is_vertical = isVertical(goal->target_pose, move_group_arm.getPoseReferenceFrame());
 
-	geometry_msgs::PoseStamped p_s = compute_non_vertical_pivoting_pose(
-		fake_traj_joint_names, post_pivoting_joint_position, fake_traj_final_joint_position,
-		move_group_arm.getLinkNames().back(), move_group_pivoting.getPoseReferenceFrame(),
-		move_group_pivoting.getLinkNames().back());
-
-	// TODO, is it possible to use move_group_pivoting here? In order to simulate the actual real robot motion
-	if (!plan(move_group_arm, move_group_arm.getLinkNames().back(), p_s, pivoting_fixed_position_constraint,
-			  planned_traj, false, true))
+	if (is_vertical)
 	{
-	  ROS_INFO("Fail to plan in pivoting mode");
-	  as_.setAborted();
-	  return;
+	  res.pivoting_mode.push_back(true);
+	  res.pivoting_mode.push_back(false);
 	}
+	else
+	{
+	  ROS_INFO("NON VERTICAL FINAL POSE!");
 
-	res.planned_trajectories.push_back(planned_traj);
-	set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);
+	  res.pivoting_mode.push_back(true);
+	  res.pivoting_mode.push_back(false);
+	  res.pivoting_mode.push_back(false);
 
-	// At this point the object should be vertical
-	simulate_gravity_pivoting_not_attached(goal->attached_object_id + "/" + goal->cog_subframe,
-										   move_group_pivoting.getJointNames().back(),
-										   move_group_pivoting.getCurrentJointValues().back(), goal->attached_object_id,
-										   move_group_pivoting.getLinkNames().back());
+	  geometry_msgs::PoseStamped p_s = compute_non_vertical_pivoting_pose(
+		  fake_traj_joint_names, post_pivoting_joint_position, fake_traj_final_joint_position,
+		  move_group_arm.getLinkNames().back(), move_group_pivoting.getPoseReferenceFrame(),
+		  move_group_pivoting.getLinkNames().back());
 
-	post_pivoting_joint_position = move_group_pivoting.getCurrentJointValues();
+	  if (!plan(move_group_arm, move_group_arm.getLinkNames().back(), p_s, pivoting_fixed_position_constraint,
+				planned_traj, false))
+	  {
+		ROS_INFO("Fail to plan in pivoting mode");
+		as_.setAborted();
+		return;
+	  }
+
+	  res.planned_trajectories.push_back(planned_traj);
+	  set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);
+
+	  // At this point the object should be vertical
+	  simulate_gravity_pivoting_not_attached(goal->attached_object_id + "/" + goal->cog_subframe,
+											 move_group_pivoting.getJointNames().back(),
+											 move_group_pivoting.getCurrentJointValues().back(),
+											 goal->attached_object_id, move_group_pivoting.getLinkNames().back());
+
+	  post_pivoting_joint_position = move_group_pivoting.getCurrentJointValues();
+	}
 
 #ifdef DBG_BTN
 	std::cout << "computing p_p [button]" << std::endl;
 	std::cin >> ans;
 #endif
+
+	geometry_msgs::PoseStamped p_p =
+		compute_after_pivoting_pose(fake_traj_joint_names, post_pivoting_joint_position, fake_traj_final_joint_position,
+									move_group_arm.getLinkNames().back(), move_group_pivoting.getPoseReferenceFrame());
+
+// DBG
+#ifdef DBG_BTN
+	std::cout << p_p << std::endl;
+	std::cout << "p_p computed [button]" << std::endl;
+	std::cin >> ans;
+	std::cout << "change attach grasp state [button]" << std::endl;
+	std::cin >> ans;
+#endif
+
+	// TODO, is it possible to use move_group_pivoting here? In order to simulate the actual real robot motion
 
 	// ATTACH object to the standard link
 	detachCollisionObject(planning_scene_monitor_, goal->attached_object_id, "robot_description");
@@ -655,6 +622,48 @@ public:
 #ifdef DBG_BTN
 	print_collision_obj_state(planning_scene_monitor_);
 	std::cout << "attach grasp state changed [button]" << std::endl;
+	std::cin >> ans;
+#endif
+
+// DBG
+#ifdef DBG_BTN
+	std::cout << "plan p_p [button]" << std::endl;
+	std::cin >> ans;
+#endif
+
+	if (!plan(move_group_arm, move_group_arm.getLinkNames().back(), p_p, pivoting_fixed_position_constraint,
+			  planned_traj, false))
+	{
+	  ROS_INFO("Fail to plan to p_p");
+	  as_.setAborted();
+	  return;
+	}
+
+// DBG
+#ifdef DBG_BTN
+	std::cout << "p_p planned [button]" << std::endl;
+	std::cin >> ans;
+#endif
+
+	res.planned_trajectories.push_back(planned_traj);
+	set_simulation_configuration(planned_traj.points.back().positions, planned_traj.joint_names);
+
+// DBG
+#ifdef DBG_BTN
+	std::cout << "simulate pivoting [button]" << std::endl;
+	std::cin >> ans;
+#endif
+
+	// TO simulate pivoting, attach obj to pivoting link (only if final pose is vertical)
+	if (is_vertical)
+	  simulate_gravity_pivoting_not_attached(goal->attached_object_id + "/" + goal->cog_subframe,
+											 move_group_pivoting.getJointNames().back(),
+											 move_group_pivoting.getCurrentJointValues().back(),
+											 goal->attached_object_id, move_group_pivoting.getLinkNames().back());
+
+// DBG
+#ifdef DBG_BTN
+	std::cout << "pivoting simulated [button]" << std::endl;
 	std::cin >> ans;
 #endif
 

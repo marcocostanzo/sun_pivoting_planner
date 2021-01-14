@@ -80,7 +80,12 @@ void spawnSceneObjects(planning_scene_monitor::PlanningSceneMonitorPtr& planning
 void removeSceneObjects(planning_scene_monitor::PlanningSceneMonitorPtr& planning_scene_monitor,
                         std::vector<SceneObject>& objs);
 
+const SceneObject& getSceneObjectFromVector(const std::vector<SceneObject>& objs, const std::string& object_id,
+                                            int& index);
+
 const SceneObject& getSceneObjectFromVector(const std::vector<SceneObject>& objs, const std::string& object_id);
+
+const SceneObject removeSceneObjectFromVector(std::vector<SceneObject>& objs, const std::string& object_id, int& index);
 
 const SceneObject removeSceneObjectFromVector(std::vector<SceneObject>& objs, const std::string& object_id);
 

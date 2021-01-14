@@ -240,10 +240,12 @@ void removeSceneObjects(planning_scene_monitor::PlanningSceneMonitorPtr& plannin
   }
 }
 
-const SceneObject& getSceneObjectFromVector(const std::vector<SceneObject>& objs, const std::string& object_id)
+const SceneObject& getSceneObjectFromVector(const std::vector<SceneObject>& objs, const std::string& object_id,
+                                            int& index)
 {
-  for (const auto& obj : objs)
+  for (index = 0; index < objs.size(); index++)
   {
+    const auto& obj = objs[index];
     if (obj.id == object_id)
     {
       return obj;
@@ -252,18 +254,30 @@ const SceneObject& getSceneObjectFromVector(const std::vector<SceneObject>& objs
   throw collision_object_not_found("getSceneObject object_id " + object_id + " not found");
 }
 
-const SceneObject removeSceneObjectFromVector(std::vector<SceneObject>& objs, const std::string& object_id)
+const SceneObject& getSceneObjectFromVector(const std::vector<SceneObject>& objs, const std::string& object_id)
 {
-  for (int i = 0; i < objs.size(); i++)
+  int index;
+  return getSceneObjectFromVector(objs, object_id, index);
+}
+
+const SceneObject removeSceneObjectFromVector(std::vector<SceneObject>& objs, const std::string& object_id, int& index)
+{
+  for (index = 0; index < objs.size(); index++)
   {
-    if (objs[i].id == object_id)
+    if (objs[index].id == object_id)
     {
-      SceneObject obj = objs[i];
-      objs.erase(objs.begin() + i);
+      SceneObject obj = objs[index];
+      objs.erase(objs.begin() + index);
       return obj;
     }
   }
   throw collision_object_not_found("getSceneObject object_id " + object_id + " not found");
+}
+
+const SceneObject removeSceneObjectFromVector(std::vector<SceneObject>& objs, const std::string& object_id)
+{
+  int index;
+  return removeSceneObjectFromVector(objs, object_id, index);
 }
 
 }  // namespace sun

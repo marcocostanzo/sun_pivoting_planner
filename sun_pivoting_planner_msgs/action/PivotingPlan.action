@@ -37,6 +37,8 @@ string cog_subframe
 # The name of the group that should be used to plan with pivoting
 string group_arm_pivoting_name
 
+float64 plan_time
+
 ---
 
 #RESULT DEFINITION
